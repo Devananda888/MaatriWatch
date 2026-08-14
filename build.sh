@@ -22,6 +22,19 @@ echo "Getting packages..."
 flutter pub get
 
 echo "Building Flutter Web application..."
-flutter build web --release
+if [ "$DEMO_MODE" = "true" ]; then
+  echo "Building in DEMO_MODE..."
+  flutter build web --release --dart-define=DEMO_MODE=true
+else
+  echo "Building with Firebase configuration..."
+  flutter build web --release \
+    --dart-define=FIREBASE_API_KEY="$FIREBASE_API_KEY" \
+    --dart-define=FIREBASE_APP_ID="$FIREBASE_APP_ID" \
+    --dart-define=FIREBASE_MESSAGING_SENDER_ID="$FIREBASE_MESSAGING_SENDER_ID" \
+    --dart-define=FIREBASE_PROJECT_ID="$FIREBASE_PROJECT_ID" \
+    --dart-define=FIREBASE_AUTH_DOMAIN="$FIREBASE_AUTH_DOMAIN" \
+    --dart-define=FIREBASE_DATABASE_URL="$FIREBASE_DATABASE_URL" \
+    --dart-define=API_BASE_URL="$API_BASE_URL"
+fi
 
 echo "Build complete!"
