@@ -1,0 +1,56 @@
+{
+  "live_vitals": {
+    "{hospitalId}": {
+      "{patientId}": {
+        "captured_at": "2026-08-14T10:12:00+00:00",
+        "received_at": "2026-08-14T10:12:01+00:00",
+        "device_id": "uuid",
+        "source_event_id": "device-boot-7:42",
+        "source_sequence": 42,
+        "heart_rate_bpm": 78,
+        "spo2_percent": 98,
+        "temperature_c": 36.8,
+        "systolic_bp": 112,
+        "diastolic_bp": 72,
+        "battery_percent": 84,
+        "blood_loss_ml": null,
+        "bleeding_reported": false,
+        "motion": {},
+        "assessment_state": "rule_evaluated",
+        "status": "normal"
+      }
+    }
+  },
+  "live_alerts": {
+    "{hospitalId}": {
+      "{alertId}": {
+        "patient_id": "uuid",
+        "severity": "critical",
+        "status": "open",
+        "alert_type": "fall_detected",
+        "message": "Possible fall detected: contact the mother and assess urgently.",
+        "triggered_at": "2026-08-14T10:12:01+00:00",
+        "last_seen_at": "2026-08-14T10:12:01+00:00",
+        "occurrence_count": 1,
+        "rule_version": "baseline-2026-08-14"
+      }
+    }
+  },
+  "access": {
+    "{firebaseUid}": {
+      "{hospitalId}": {
+        "role": "clinician",
+        "active": true,
+        "can_read_all_live_vitals": true,
+        "can_read_alert_queue": true
+      }
+    }
+  },
+  "patient_access": {
+    "{firebaseUid}": {
+      "{hospitalId}": {
+        "{patientId}": true
+      }
+    }
+  }
+}

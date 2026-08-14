@@ -1,0 +1,33 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "live_vitals": {
+      "$hospitalId": {
+        ".read": "auth != null && root.child('access').child(auth.uid).child($hospitalId).child('active').val() === true && root.child('access').child(auth.uid).child($hospitalId).child('can_read_all_live_vitals').val() === true",
+        "$patientId": {
+          ".read": "auth != null && root.child('patient_access').child(auth.uid).child($hospitalId).child($patientId).val() === true"
+        },
+        ".write": false
+      }
+    },
+    "live_alerts": {
+      "$hospitalId": {
+        ".read": "auth != null && root.child('access').child(auth.uid).child($hospitalId).child('active').val() === true && root.child('access').child(auth.uid).child($hospitalId).child('can_read_alert_queue').val() === true",
+        ".write": false
+      }
+    },
+    "access": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "patient_access": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    }
+  }
+}

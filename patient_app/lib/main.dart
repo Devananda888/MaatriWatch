@@ -1,0 +1,19 @@
+import 'package:flutter/material.dart';
+
+import 'core/app_theme.dart';
+import 'features/patient/patient_home.dart';
+
+void main() => runApp(const MaatriWatchPatientApp());
+
+/// Android-first entry point for the existing mock patient companion flow.
+class MaatriWatchPatientApp extends StatelessWidget {
+  const MaatriWatchPatientApp({super.key});
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        title: 'MaatriWatch',
+        debugShowCheckedModeBanner: false,
+        theme: maatriTheme(),
+        home: const DemoPatientHome(),
+      );
+}
