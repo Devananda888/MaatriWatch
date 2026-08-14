@@ -1,0 +1,12 @@
+{
+  "buildCommand": "bash build.sh",
+  "outputDirectory": "dashboard/build/web",
+  "installCommand": "echo 'Skipping install cmd as everything is in build.sh'",
+  "framework": null,
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
