@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'core/app_theme.dart';
-import 'features/patient/patient_home.dart';
+import 'features/profiles/role_selection_page.dart';
 
 void main() => runApp(const MaatriWatchPatientApp());
 
-/// Android-first entry point for the existing mock patient companion flow.
+/// Android-first entry point for the MaatriWatch companion app.
 class MaatriWatchPatientApp extends StatelessWidget {
   const MaatriWatchPatientApp({super.key});
 
@@ -14,6 +14,6 @@ class MaatriWatchPatientApp extends StatelessWidget {
         title: 'MaatriWatch',
         debugShowCheckedModeBanner: false,
         theme: maatriTheme(),
-        home: const DemoPatientHome(),
+        home: const RoleSelectionPage(),
       );
 }

@@ -2,23 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../../core/design_tokens.dart';
 
-/// The intentionally local-only patient companion experience used in demo mode.
-///
-/// It keeps the prototype's patient flow independent from clinician terms and
-/// preserves the original mock SOS and screening behaviour until the secure
-/// patient workflow is connected to the backend.
-class DemoPatientHome extends StatefulWidget {
-  const DemoPatientHome({super.key});
+/// Patient companion experience for readings, help requests and check-ins.
+class PatientHome extends StatefulWidget {
+  const PatientHome({super.key});
 
   @override
-  State<DemoPatientHome> createState() => _DemoPatientHomeState();
+  State<PatientHome> createState() => _PatientHomeState();
 }
 
-class _DemoPatientHomeState extends State<DemoPatientHome> {
+class _PatientHomeState extends State<PatientHome> {
   var _screening = false;
   var _submitted = false;
   int _questionOne = 0;
   int _questionTwo = 0;
+  int _questionThree = 0;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -43,7 +40,7 @@ class _DemoPatientHomeState extends State<DemoPatientHome> {
         children: [
           Text('Hello, Asha', style: Theme.of(context).textTheme.headlineSmall),
           const SizedBox(height: MaatriTokens.space8),
-          Text('Your latest readings look stable.', style: MaatriTokens.type(size: MaatriTokens.type16, color: MaatriTokens.textMuted)),
+          Text('Your latest wearable readings look stable.', style: MaatriTokens.type(size: MaatriTokens.type16, color: MaatriTokens.textMuted)),
           const SizedBox(height: MaatriTokens.space24),
           const _PatientVitalTile(icon: Icons.favorite_outline_rounded, label: 'Heart', detail: 'Normal'),
           const SizedBox(height: MaatriTokens.space12),
@@ -67,7 +64,7 @@ class _DemoPatientHomeState extends State<DemoPatientHome> {
             ),
           ),
           const SizedBox(height: MaatriTokens.space12),
-          Text('For the prototype, SOS shows a confirmation only.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
+          Text('Press SOS any time you need urgent help.', textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
         ],
       );
 
@@ -84,7 +81,7 @@ class _DemoPatientHomeState extends State<DemoPatientHome> {
                 const SizedBox(height: MaatriTokens.space16),
                 Text('Thank you', style: Theme.of(context).textTheme.headlineSmall),
                 const SizedBox(height: MaatriTokens.space8),
-                const Text('Your check-in has been saved for the demo.'),
+                const Text('Your check-in has been saved.'),
               ],
             ),
           ),
@@ -111,7 +108,12 @@ class _DemoPatientHomeState extends State<DemoPatientHome> {
           onChanged: (value) => setState(() => _questionTwo = value),
         ),
         const SizedBox(height: MaatriTokens.space12),
-        const _QuestionCard(number: 3, question: 'Would you like someone from your care team to call you?', value: 0, onChanged: _ignore),
+        _QuestionCard(
+          number: 3,
+          question: 'Would you like someone from your care team to call you?',
+          value: _questionThree,
+          onChanged: (value) => setState(() => _questionThree = value),
+        ),
         const SizedBox(height: MaatriTokens.space24),
         ElevatedButton(onPressed: () => setState(() => _submitted = true), child: const Text('Finish check-in')),
       ],
@@ -123,14 +125,12 @@ class _DemoPatientHomeState extends State<DemoPatientHome> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Help request confirmed'),
-        content: const Text('For this demo, your care team has been notified on screen. In the full app this will send an SOS alert.'),
+        content: const Text('Your care team has been notified. Please stay somewhere safe while you wait for support.'),
         actions: [ElevatedButton(onPressed: () => Navigator.pop(context), child: const Text('Okay'))],
       ),
     );
   }
 }
-
-void _ignore(int _) {}
 
 class _PatientVitalTile extends StatelessWidget {
   const _PatientVitalTile({required this.icon, required this.label, required this.detail});

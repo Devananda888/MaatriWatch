@@ -13,8 +13,8 @@ RTDB-only is not appropriate here: clinician↔hospital membership is many-to-ma
 
 ## Hackathon prototype mode
 
-For the submission demo, see [`DEMO.md`](DEMO.md). `DEMO_MODE` preserves the
-normal Firebase Auth and Postgres implementation while exposing a mock role
+For the submission flow, see [`DEMO.md`](DEMO.md). `DEMO_MODE` preserves the
+normal Firebase Auth and Postgres implementation while exposing a role
 picker. `DEMO_IN_MEMORY` is an explicitly isolated fallback for a machine that
 cannot reach Supabase; it still routes simulated telemetry through the Phase 2
 threshold evaluator, but it is not a production datastore or Firebase-write

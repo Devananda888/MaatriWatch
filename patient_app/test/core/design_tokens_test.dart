@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:maatriwatch_clinician_dashboard/core/design_tokens.dart';
+import 'package:maatriwatch_patient_app/core/design_tokens.dart';
 
 void main() {
   test('critical status is reserved for the critical token', () {

@@ -40,7 +40,7 @@ class DemoRolePicker extends StatelessWidget {
                     icon: Icons.favorite_outline_rounded,
                     title: 'Patient',
                     subtitle: 'View simple vitals, use SOS, and complete a check-in',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DemoPatientHome())),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientHome())),
                   ),
                   const SizedBox(height: MaatriTokens.space12),
                   _RoleButton(

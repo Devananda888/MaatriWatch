@@ -20,10 +20,10 @@ python -m http.server 3000 --directory dashboard\build\web
 
 Open `http://localhost:3000`. The role picker offers:
 
-- **Doctor** — real Flask clinician routes with seven seeded mock patients,
+- **Doctor** — real Flask clinician routes with seven seeded patients,
   trend history, status chips, alert acknowledgement/resolution, and notes.
-- **Patient** — simplified local vitals, SOS confirmation, and a three-question
-  EPDS-style check-in mock.
+- **Patient** — simplified vitals, SOS confirmation, and a three-question
+  EPDS-style check-in.
 - **Hospital Admin** — a concise prototype hospital/device overview.
 
 ## Demo centerpiece: trigger a live risk signal

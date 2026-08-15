@@ -4,3 +4,39 @@ __pycache__/
 .pytest_cache/
 .venv/
 .env
+
+# Local configuration and secrets
+backend/env
+*.env
+*.env.*
+!.env.example
+!*.env.example
+
+# Python test and coverage output
+.coverage
+coverage.xml
+htmlcov/
+
+# Flutter and Dart generated files
+**/.dart_tool/
+**/.packages
+**/build/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+
+# Android and Gradle local output
+**/.gradle/
+**/local.properties
+**/.cxx/
+**/captures/
+*.keystore
+*.jks
+key.properties
+
+# IDE and operating system files
+.idea/
+.vscode/
+*.iml
+*.log
+.DS_Store
+Thumbs.db
