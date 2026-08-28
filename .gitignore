@@ -12,6 +12,11 @@ backend/env
 !.env.example
 !*.env.example
 
+# Firebase Admin credentials and per-device firmware secrets
+*firebase-adminsdk*.json
+*service-account*.json
+firmware/**/secrets.h
+
 # Python test and coverage output
 .coverage
 coverage.xml
