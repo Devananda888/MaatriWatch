@@ -302,13 +302,19 @@ class _VitalsSnapshot extends StatelessWidget {
   Widget build(BuildContext context) {
     final cards = [
       _VitalValue(icon: Icons.favorite_outline_rounded, label: 'Heart rate', value: reading?.heartRate == null ? '—' : '${reading!.heartRate!.toStringAsFixed(0)} bpm'),
-      _VitalValue(icon: Icons.air_rounded, label: 'SpO₂', value: reading?.spo2 == null ? '—' : '${reading!.spo2!.toStringAsFixed(0)}%'),
-      _VitalValue(icon: Icons.thermostat_outlined, label: 'Temperature', value: reading?.temperature == null ? '—' : '${reading!.temperature!.toStringAsFixed(1)} °C'),
+      _VitalValue(icon: Icons.air_rounded, label: 'SpO₂ estimate', value: reading?.spo2 == null ? '—' : '${reading!.spo2!.toStringAsFixed(0)}%'),
+      _VitalValue(
+        icon: Icons.thermostat_outlined,
+        label: 'Ambient temperature',
+        value: reading?.ambientTemperature == null
+            ? '—'
+            : '${reading!.ambientTemperature!.toStringAsFixed(1)} °C${reading!.ambientHumidity == null ? '' : '  ${reading!.ambientHumidity!.toStringAsFixed(0)}%'}',
+      ),
       _VitalValue(
         icon: Icons.monitor_heart_outlined,
-        label: 'Blood pressure',
+        label: 'Cuff blood pressure',
         value: reading?.systolic == null || reading?.diastolic == null
-            ? '—'
+            ? 'Cuff required'
             : '${reading!.systolic!.toStringAsFixed(0)}/${reading!.diastolic!.toStringAsFixed(0)}',
       ),
     ];

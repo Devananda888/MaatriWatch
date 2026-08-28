@@ -31,6 +31,8 @@ class VitalReading {
     this.heartRate,
     this.spo2,
     this.temperature,
+    this.ambientTemperature,
+    this.ambientHumidity,
     this.systolic,
     this.diastolic,
     this.battery,
@@ -41,7 +43,11 @@ class VitalReading {
   final DateTime? capturedAt;
   final double? heartRate;
   final double? spo2;
+  /// Clinical body temperature, when supplied by a validated body sensor.
   final double? temperature;
+  /// DHT11 environmental reading. Never interpret as body temperature.
+  final double? ambientTemperature;
+  final double? ambientHumidity;
   final double? systolic;
   final double? diastolic;
   final double? battery;
@@ -53,6 +59,8 @@ class VitalReading {
         heartRate: asDouble(json['heart_rate_bpm']),
         spo2: asDouble(json['spo2_percent']),
         temperature: asDouble(json['temperature_c']),
+        ambientTemperature: asDouble(json['ambient_temperature_c']),
+        ambientHumidity: asDouble(json['ambient_humidity_percent']),
         systolic: asDouble(json['systolic_bp']),
         diastolic: asDouble(json['diastolic_bp']),
         battery: asDouble(json['battery_percent']),

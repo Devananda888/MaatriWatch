@@ -306,6 +306,7 @@ def patient_detail(hospital_id: str, patient_id: str):
         patient = _patient_or_404(cursor, hospital_uuid, patient_uuid)
         cursor.execute(
             """SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c,
+                      ambient_temperature_c, ambient_humidity_percent,
                       systolic_bp, diastolic_bp, battery_percent, blood_loss_ml,
                       bleeding_reported, motion
                FROM vital_readings
@@ -384,6 +385,7 @@ def patient_vitals(hospital_id: str, patient_id: str):
         if resolution == "raw":
             cursor.execute(
                 """SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c,
+                          ambient_temperature_c, ambient_humidity_percent,
                           systolic_bp, diastolic_bp, battery_percent, blood_loss_ml
                    FROM vital_readings
                    WHERE hospital_id = %s AND patient_id = %s
@@ -402,6 +404,8 @@ def patient_vitals(hospital_id: str, patient_id: str):
                            avg(heart_rate_bpm) AS heart_rate_bpm,
                            avg(spo2_percent) AS spo2_percent,
                            avg(temperature_c) AS temperature_c,
+                           avg(ambient_temperature_c) AS ambient_temperature_c,
+                           avg(ambient_humidity_percent) AS ambient_humidity_percent,
                            avg(systolic_bp) AS systolic_bp,
                            avg(diastolic_bp) AS diastolic_bp,
                            avg(battery_percent) AS battery_percent,

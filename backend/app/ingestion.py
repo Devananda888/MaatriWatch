@@ -24,6 +24,8 @@ _MEASUREMENT_FIELDS = (
     "heart_rate_bpm",
     "spo2_percent",
     "temperature_c",
+    "ambient_temperature_c",
+    "ambient_humidity_percent",
     "systolic_bp",
     "diastolic_bp",
     "battery_percent",
@@ -34,6 +36,10 @@ _RANGES = {
     "heart_rate_bpm": (20, 260),
     "spo2_percent": (0, 100),
     "temperature_c": (25, 45),
+    # Ambient readings are environmental context only. They are intentionally
+    # distinct from maternal body temperature and do not enter clinical alerts.
+    "ambient_temperature_c": (-20, 85),
+    "ambient_humidity_percent": (0, 100),
     "systolic_bp": (50, 260),
     "diastolic_bp": (30, 180),
     "battery_percent": (0, 100),
@@ -351,11 +357,13 @@ def ingest_vitals():
             """INSERT INTO vital_readings
                (hospital_id, patient_id, device_id, source_event_id, source_sequence,
                 payload_fingerprint, captured_at, heart_rate_bpm, spo2_percent,
-                temperature_c, systolic_bp, diastolic_bp, battery_percent, blood_loss_ml,
+                temperature_c, ambient_temperature_c, ambient_humidity_percent,
+                systolic_bp, diastolic_bp, battery_percent, blood_loss_ml,
                 bleeding_reported, motion, raw_payload)
                VALUES (%(hospital_id)s, %(patient_id)s, %(device_id)s, %(source_event_id)s,
                        %(source_sequence)s, %(payload_fingerprint)s, %(captured_at)s,
                        %(heart_rate_bpm)s, %(spo2_percent)s, %(temperature_c)s,
+                       %(ambient_temperature_c)s, %(ambient_humidity_percent)s,
                        %(systolic_bp)s, %(diastolic_bp)s, %(battery_percent)s,
                        %(blood_loss_ml)s, %(bleeding_reported)s, %(motion)s, %(raw_payload)s)
                ON CONFLICT (device_id, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING

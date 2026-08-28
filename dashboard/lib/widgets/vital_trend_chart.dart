@@ -11,7 +11,7 @@ extension VitalMetricLabel on VitalMetric {
   String get label => switch (this) {
         VitalMetric.heartRate => 'Heart rate',
         VitalMetric.spo2 => 'SpO₂',
-        VitalMetric.temperature => 'Temperature',
+        VitalMetric.temperature => 'Ambient temp',
         VitalMetric.systolic => 'Blood pressure',
       };
 
@@ -25,7 +25,7 @@ extension VitalMetricLabel on VitalMetric {
   double? value(VitalReading item) => switch (this) {
         VitalMetric.heartRate => item.heartRate,
         VitalMetric.spo2 => item.spo2,
-        VitalMetric.temperature => item.temperature,
+        VitalMetric.temperature => item.ambientTemperature,
         VitalMetric.systolic => item.systolic,
       };
 }

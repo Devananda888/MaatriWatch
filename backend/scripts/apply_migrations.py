@@ -1,7 +1,7 @@
 """Apply only missing MaatriWatch schema phases to the configured Postgres DB.
 
 This is intentionally small for the hackathon demo: it inspects the schema,
-then applies 001 through 004 in order as needed. It never prints the
+then applies 001 through 005 in order as needed. It never prints the
 connection URL or values from .env.
 """
 
@@ -57,17 +57,21 @@ def main() -> int:
                 phase_two_missing = not initial_missing and not column_exists(cursor, "vital_readings", "source_event_id")
                 phase_three_missing = not initial_missing and not column_exists(cursor, "alerts", "updated_at")
                 phase_four_missing = not initial_missing and not table_exists(cursor, "patient_consents")
+                phase_five_missing = not initial_missing and not column_exists(cursor, "vital_readings", "ambient_temperature_c")
             if initial_missing:
                 apply_file(connection, "001_initial_schema.sql")
                 phase_two_missing = True
                 phase_three_missing = True
                 phase_four_missing = True
+                phase_five_missing = True
             if phase_two_missing:
                 apply_file(connection, "002_ingestion_alerting.sql")
             if phase_three_missing:
                 apply_file(connection, "003_clinician_dashboard.sql")
             if phase_four_missing:
                 apply_file(connection, "004_patient_safety_workflows.sql")
+            if phase_five_missing:
+                apply_file(connection, "005_environmental_context.sql")
     except OperationalError:
         print("Could not connect to Postgres. Check DATABASE_URL without printing it.", file=sys.stderr)
         return 1

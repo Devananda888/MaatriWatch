@@ -38,7 +38,8 @@ cell while unattended, and use a protected LiPo.
    station mode is the correct internet-connected mode; SoftAP/BLE are suitable
    provisioning transports, not the clinical data channel. [Espressif Wi-Fi documentation](https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/wifi.html)
 5. Put a finger firmly over the MAX30102 for 10–20 seconds. The OLED shows a
-   smoothed prototype pulse estimate; hold the button 1.2 seconds to issue SOS.
+   smoothed prototype pulse and SpO₂ estimate; hold the button 1.2 seconds to
+   issue SOS.
 
 ## Hospital lifecycle
 
@@ -56,7 +57,10 @@ cell while unattended, and use a protected LiPo.
 
 The DHT11 is intentionally shown only as **ambient** temperature/humidity. It
 must not be used as body temperature. MAX30102 pulse/SpO₂ readings from this
-prototype are not diagnostic or clinically validated.
+prototype are not diagnostic or clinically validated. A single MAX30102 does
+not directly measure blood pressure; the dashboard reserves BP for a validated
+cuff reading. Do not derive or alert on a maternal BP value without a
+patient-specific cuff-calibrated model and a completed validation study.
 
 ### Device lifecycle API
 

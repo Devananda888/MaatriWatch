@@ -24,6 +24,7 @@
 #include <WiFiManager.h>
 #include <Wire.h>
 #include "heartRate.h"
+#include "spo2_algorithm.h"
 
 #include "secrets.h"
 
@@ -35,14 +36,19 @@ constexpr uint32_t UPLOAD_INTERVAL_MS = 15000;
 constexpr uint32_t OLED_INTERVAL_MS = 500;
 constexpr uint32_t SOS_HOLD_MS = 1200;
 constexpr uint32_t MIN_IR_FOR_FINGER = 50000;
+constexpr uint8_t SPO2_BUFFER_SIZE = 100;  // 4 s at the library's effective 25 SPS configuration.
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 DHT dht(PIN_DHT, DHT11);
 MAX30105 max3010x;
 
 float bpm = NAN;
+float spo2 = NAN;
 float airTemperature = NAN;
 float humidity = NAN;
+uint32_t irBuffer[SPO2_BUFFER_SIZE];
+uint32_t redBuffer[SPO2_BUFFER_SIZE];
+uint8_t spo2SampleCount = 0;
 uint32_t lastBeatAt = 0;
 uint32_t lastUploadAt = 0;
 uint32_t lastDisplayAt = 0;
@@ -50,6 +56,7 @@ uint32_t lastDhtAt = 0;
 uint32_t sosPressedAt = 0;
 uint32_t sequence = 0;
 bool fingerPresent = false;
+bool spo2MeasurementValid = false;
 bool sosSentForPress = false;
 bool maxReady = false;
 
@@ -74,18 +81,35 @@ bool postTelemetry(bool sosPressed) {
   const String capturedAt = isoTimestamp();
   if (capturedAt.isEmpty()) return false;
 
-  StaticJsonDocument<384> payload;
+  const bool hasHeartRate = fingerPresent && !isnan(bpm) && bpm >= 20 && bpm <= 260;
+  const bool hasSpo2 = fingerPresent && spo2MeasurementValid && !isnan(spo2) && spo2 >= 70 && spo2 <= 100;
+  const bool hasAmbient = !isnan(airTemperature) || !isnan(humidity);
+  // The API intentionally rejects events with no observation.  Avoid sending
+  // an empty periodic event while the watch is off-wrist; an SOS is still a
+  // meaningful event and must always be uploaded.
+  if (!hasHeartRate && !hasSpo2 && !hasAmbient && !sosPressed) {
+    Serial.println("Telemetry skipped: waiting for a valid sensor observation.");
+    return true;
+  }
+
+  StaticJsonDocument<512> payload;
   payload["event_id"] = eventId();
   payload["source_sequence"] = sequence;
   payload["captured_at"] = capturedAt;
-  // Do not upload DHT11 as maternal temperature: it is ambient-air data.
-  if (fingerPresent && !isnan(bpm) && bpm >= 20 && bpm <= 260) payload["heart_rate_bpm"] = (int)round(bpm);
+  // DHT11 is intentionally reported as ambient only, never as maternal body temperature.
+  if (hasHeartRate) payload["heart_rate_bpm"] = (int)round(bpm);
+  if (hasSpo2) payload["spo2_percent"] = round(spo2 * 10.0f) / 10.0f;
+  if (!isnan(airTemperature)) payload["ambient_temperature_c"] = round(airTemperature * 10.0f) / 10.0f;
+  if (!isnan(humidity)) payload["ambient_humidity_percent"] = round(humidity * 10.0f) / 10.0f;
   JsonObject motion = payload["motion"].to<JsonObject>();
   if (sosPressed) motion["sos_pressed"] = true;
 
   String body;
   serializeJson(payload, body);
   HTTPClient http;
+  // Free-tier hosts can take longer to wake on the first request.  Keep the
+  // device responsive while allowing enough time for that legitimate delay.
+  http.setTimeout(20000);
   int status = -1;
   if (String(API_URL).startsWith("https://")) {
     WiFiClientSecure client;
@@ -104,22 +128,65 @@ bool postTelemetry(bool sosPressed) {
     status = http.POST(body);
   }
   Serial.printf("Telemetry status: %d\n", status);
+  if (status >= 400) {
+    Serial.printf("Telemetry response: %s\n", http.getString().c_str());
+  }
   http.end();
   return status >= 200 && status < 300;
 }
 
-void readHeartRate() {
+void clearPpgMeasurements() {
+  bpm = NAN;
+  spo2 = NAN;
+  spo2MeasurementValid = false;
+  spo2SampleCount = 0;
+  lastBeatAt = 0;
+}
+
+void readPpg() {
   if (!maxReady) return;
-  const long ir = max3010x.getIR();
-  fingerPresent = ir > MIN_IR_FOR_FINGER;
-  if (!fingerPresent) { bpm = NAN; return; }
-  if (checkForBeat(ir)) {
-    const uint32_t now = millis();
-    if (lastBeatAt != 0) {
-      const float candidate = 60.0f / ((now - lastBeatAt) / 1000.0f);
-      if (candidate >= 35 && candidate <= 220) bpm = isnan(bpm) ? candidate : 0.75f * bpm + 0.25f * candidate;
+  max3010x.check();
+  while (max3010x.available()) {
+    const long ir = max3010x.getIR();
+    const long red = max3010x.getRed();
+    fingerPresent = ir > MIN_IR_FOR_FINGER;
+    if (!fingerPresent) {
+      clearPpgMeasurements();
+      max3010x.nextSample();
+      continue;
     }
-    lastBeatAt = now;
+    if (checkForBeat(ir)) {
+      const uint32_t now = millis();
+      if (lastBeatAt != 0) {
+        const float candidate = 60.0f / ((now - lastBeatAt) / 1000.0f);
+        if (candidate >= 35 && candidate <= 220) bpm = isnan(bpm) ? candidate : 0.75f * bpm + 0.25f * candidate;
+      }
+      lastBeatAt = now;
+    }
+
+    irBuffer[spo2SampleCount] = static_cast<uint32_t>(ir);
+    redBuffer[spo2SampleCount] = static_cast<uint32_t>(red);
+    spo2SampleCount++;
+    if (spo2SampleCount == SPO2_BUFFER_SIZE) {
+      int32_t calculatedSpo2 = 0;
+      int32_t calculatedHeartRate = 0;
+      int8_t validSpo2 = 0;
+      int8_t validHeartRate = 0;
+      // Maxim's reference algorithm uses red/IR PPG ratio-of-ratios across a
+      // buffered window. It is an experimental prototype value, not clinical SpO2.
+      maxim_heart_rate_and_oxygen_saturation(
+          irBuffer, SPO2_BUFFER_SIZE, redBuffer,
+          &calculatedSpo2, &validSpo2, &calculatedHeartRate, &validHeartRate);
+      spo2MeasurementValid = validSpo2 && calculatedSpo2 >= 70 && calculatedSpo2 <= 100;
+      if (spo2MeasurementValid) {
+        const float candidate = static_cast<float>(calculatedSpo2);
+        spo2 = isnan(spo2) ? candidate : 0.8f * spo2 + 0.2f * candidate;
+      } else {
+        spo2 = NAN;
+      }
+      spo2SampleCount = 0;
+    }
+    max3010x.nextSample();
   }
 }
 
@@ -137,10 +204,11 @@ void updateDisplay() {
   display.print("Pulse: ");
   if (fingerPresent && !isnan(bpm)) display.printf("%.0f bpm", bpm); else display.print("place finger");
   display.setCursor(0, 42);
+  display.print("SpO2: ");
+  if (spo2MeasurementValid && !isnan(spo2)) display.printf("%.0f%%", spo2); else display.print("stabilizing");
+  display.setCursor(0, 52);
   display.print("Air: ");
   if (!isnan(airTemperature)) display.printf("%.0fC  %.0f%%", airTemperature, humidity); else display.print("DHT unavailable");
-  display.setCursor(0, 56);
-  display.print("Hold button for SOS");
   display.display();
 }
 
@@ -180,7 +248,7 @@ void setup() {
 }
 
 void loop() {
-  readHeartRate();
+  readPpg();
   handleSosButton();
   if (millis() - lastDhtAt > 1800) {
     lastDhtAt = millis();
