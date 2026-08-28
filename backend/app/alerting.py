@@ -68,7 +68,22 @@ def evaluate_alerts(reading: Mapping[str, Any]) -> list[AlertCandidate]:
     candidates.extend(_evaluate_postpartum_hypertension(reading))
     candidates.extend(_evaluate_postpartum_hemorrhage(reading))
     candidates.extend(_evaluate_fall(reading))
+    candidates.extend(_evaluate_sos(reading))
     return candidates
+
+
+def _evaluate_sos(reading: Mapping[str, Any]) -> list[AlertCandidate]:
+    """A physical SOS button is a patient request for help, never a diagnosis."""
+    if (reading.get("motion") or {}).get("sos_pressed") is not True:
+        return []
+    return [
+        AlertCandidate(
+            rule_id="patient_sos",
+            severity="critical",
+            message="SOS button pressed: contact the mother and assess urgently.",
+            evidence={"source": "wearable_button"},
+        )
+    ]
 
 
 def _evaluate_postpartum_hypertension(reading: Mapping[str, Any]) -> list[AlertCandidate]:

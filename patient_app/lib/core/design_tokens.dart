@@ -8,7 +8,8 @@ import 'package:flutter/material.dart';
 abstract final class MaatriTokens {
   static const primary = Color(0xFF1B4B5A);
   static const primaryDark = Color(0xFF10333E);
-  static const indigo = Color(0xFF1B4B5A); // Aligning secondary with primary family
+  static const indigo =
+      Color(0xFF1B4B5A); // Aligning secondary with primary family
   static const canvas = Color(0xFFF7F5F2);
   static const surface = Color(0xFFFFFFFF);
   static const surfaceMuted = Color(0xFFEBE8E3);
@@ -64,7 +65,8 @@ abstract final class MaatriTokens {
     FontWeight weight = FontWeight.w400,
     Color color = text,
     double height = 1.4,
-  }) => TextStyle(
+  }) =>
+      TextStyle(
         fontFamily: fontFamily,
         fontFamilyFallback: fontFallbacks,
         fontSize: size,

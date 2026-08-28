@@ -22,6 +22,9 @@ substitute.
 
 ## Local start
 
+For teammate handoff, Firebase configuration, managed-Postgres deployment,
+outbox-worker setup, and release checks, see [`backend/DEPLOYMENT.md`](backend/DEPLOYMENT.md).
+
 1. Create a Python 3.11 virtual environment and install `pip install -r requirements.txt`.
 2. Copy `.env.example` to `.env`, supply Postgres and Firebase values, then apply the SQL migrations in lexical order (`001_initial_schema.sql`, `002_ingestion_alerting.sql`, then `003_clinician_dashboard.sql`).
 3. Run `flask --app app run --debug`.
@@ -40,6 +43,25 @@ For deployment, run the app behind Gunicorn as defined in `Procfile`; set all en
   - `GET /api/v1/hospitals/{hospitalId}/alerts?status=active|open|acknowledged|escalated|resolved|all`
   - `PATCH /api/v1/hospitals/{hospitalId}/alerts/{alertId}` with `{ "action": "acknowledge" | "resolve" | "escalate", "note": "..." }`
   - `GET` / `POST /api/v1/hospitals/{hospitalId}/patients/{patientId}/clinical-notes`
+
+Patient companion APIs are identity-scoped: the mobile/web client never sends a
+patient ID. After Firebase authentication, the backend resolves the one active
+patient profile linked to the signed-in account:
+
+- `GET /api/v1/patient/home` — current vital/device state, active alerts,
+  open care-plan tasks, and urgent-warning-sign education.
+- `POST /api/v1/patient/sos` — creates or updates a critical SOS episode and
+  writes an audit event. It is a care-team notification, not a replacement for
+  emergency services.
+- `POST /api/v1/patient/symptoms` — records a patient symptom report for
+  review; urgent selections are flagged for clinical workflow.
+- `GET` / `PUT /api/v1/patient/consents[/{consentType}]` — patient-controlled
+  monitoring, care-team, emergency-contact, and SOS-location sharing choices.
+- `PATCH /api/v1/patient/care-plan/{taskId}` — completes or skips an assigned
+  follow-up task.
+
+Apply `004_patient_safety_workflows.sql` after the earlier migrations before
+enabling these endpoints.
 
 Only an active `clinician` membership at the requested hospital may use the clinical APIs. Every alert action locks the episode, writes an audit event with actor/request/IP context, updates the RTDB alert projection through the durable outbox after commit, and requires a note for resolve/escalate. The API never accepts a user, role, patient, or hospital authority from a browser request body.
 

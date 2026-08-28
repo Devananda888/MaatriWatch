@@ -16,9 +16,12 @@ class RoleSelectionPage extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.all(MaatriTokens.space16),
                 children: [
-                  Text('Choose your profile', style: Theme.of(context).textTheme.headlineSmall),
+                  Text('Choose your profile',
+                      style: Theme.of(context).textTheme.headlineSmall),
                   const SizedBox(height: MaatriTokens.space8),
-                  Text('Select a profile to access the right MaatriWatch workspace.', style: Theme.of(context).textTheme.bodyMedium),
+                  Text(
+                      'Select a profile to access the right MaatriWatch workspace.',
+                      style: Theme.of(context).textTheme.bodyMedium),
                   const SizedBox(height: MaatriTokens.space24),
                   _ProfileCard(
                     icon: Icons.person_outline_rounded,
@@ -54,7 +57,8 @@ class RoleSelectionPage extends StatelessWidget {
         ),
       );
 
-  void _open(BuildContext context, Widget page) => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
+  void _open(BuildContext context, Widget page) =>
+      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => page));
 }
 
 class UserHome extends StatelessWidget {
@@ -66,15 +70,29 @@ class UserHome extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(MaatriTokens.space16),
           children: [
-            Text('Hello, Anjali', style: Theme.of(context).textTheme.headlineSmall),
+            Text('Hello, Anjali',
+                style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: MaatriTokens.space8),
-            const Text('Stay connected to your postpartum care plan and support network.'),
+            const Text(
+                'Stay connected to your postpartum care plan and support network.'),
             const SizedBox(height: MaatriTokens.space24),
-            const _InfoCard(icon: Icons.calendar_month_outlined, title: 'Next follow-up', value: '18 Aug, 10:30 AM', caption: 'MACE Women’s Health Clinic'),
+            const _InfoCard(
+                icon: Icons.calendar_month_outlined,
+                title: 'Next follow-up',
+                value: '18 Aug, 10:30 AM',
+                caption: 'MACE Women’s Health Clinic'),
             const SizedBox(height: MaatriTokens.space12),
-            const _InfoCard(icon: Icons.groups_outlined, title: 'Support contact', value: 'Asha, ASHA worker', caption: 'Available today until 6:00 PM'),
+            const _InfoCard(
+                icon: Icons.groups_outlined,
+                title: 'Support contact',
+                value: 'Asha, ASHA worker',
+                caption: 'Available today until 6:00 PM'),
             const SizedBox(height: MaatriTokens.space12),
-            const _InfoCard(icon: Icons.check_circle_outline_rounded, title: 'Care plan', value: '3 of 4 tasks complete', caption: 'Hydration, rest and check-in are on track'),
+            const _InfoCard(
+                icon: Icons.check_circle_outline_rounded,
+                title: 'Care plan',
+                value: '3 of 4 tasks complete',
+                caption: 'Hydration, rest and check-in are on track'),
           ],
         ),
       );
@@ -89,17 +107,35 @@ class DoctorHome extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(MaatriTokens.space16),
           children: [
-            Text('Morning round', style: Theme.of(context).textTheme.headlineSmall),
+            Text('Morning round',
+                style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: MaatriTokens.space8),
             const Text('8 mothers are under active observation today.'),
             const SizedBox(height: MaatriTokens.space24),
-            const _InfoCard(icon: Icons.notifications_active_outlined, title: 'Priority review', value: '2 alerts need attention', caption: 'Review high-risk readings first', color: MaatriTokens.critical),
+            const _InfoCard(
+                icon: Icons.notifications_active_outlined,
+                title: 'Priority review',
+                value: '2 alerts need attention',
+                caption: 'Review high-risk readings first',
+                color: MaatriTokens.critical),
             const SizedBox(height: MaatriTokens.space12),
-            const _PatientStatus(name: 'Asha Nair', detail: 'Heart rate 82 bpm • SpO₂ 98%', status: 'Stable', color: MaatriTokens.success),
+            const _PatientStatus(
+                name: 'Asha Nair',
+                detail: 'Heart rate 82 bpm • SpO₂ 98%',
+                status: 'Stable',
+                color: MaatriTokens.success),
             const SizedBox(height: MaatriTokens.space12),
-            const _PatientStatus(name: 'Meera Das', detail: 'Heart rate 106 bpm • Temperature 38.1°C', status: 'Review', color: MaatriTokens.warning),
+            const _PatientStatus(
+                name: 'Meera Das',
+                detail: 'Heart rate 106 bpm • Temperature 38.1°C',
+                status: 'Review',
+                color: MaatriTokens.warning),
             const SizedBox(height: MaatriTokens.space12),
-            const _PatientStatus(name: 'Fathima K.', detail: 'Fall event detected • 4 minutes ago', status: 'Urgent', color: MaatriTokens.critical),
+            const _PatientStatus(
+                name: 'Fathima K.',
+                detail: 'Fall event detected • 4 minutes ago',
+                status: 'Urgent',
+                color: MaatriTokens.critical),
           ],
         ),
       );
@@ -114,15 +150,28 @@ class AdminHome extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(MaatriTokens.space16),
           children: [
-            Text('MACE Women’s Health Clinic', style: Theme.of(context).textTheme.headlineSmall),
+            Text('MACE Women’s Health Clinic',
+                style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: MaatriTokens.space8),
             const Text('Today’s care operations at a glance.'),
             const SizedBox(height: MaatriTokens.space24),
-            const _InfoCard(icon: Icons.people_outline, title: 'Active patients', value: '8', caption: 'All assigned to a care team'),
+            const _InfoCard(
+                icon: Icons.people_outline,
+                title: 'Active patients',
+                value: '8',
+                caption: 'All assigned to a care team'),
             const SizedBox(height: MaatriTokens.space12),
-            const _InfoCard(icon: Icons.watch_outlined, title: 'Devices assigned', value: '8 of 10', caption: '2 devices available for issue'),
+            const _InfoCard(
+                icon: Icons.watch_outlined,
+                title: 'Devices assigned',
+                value: '8 of 10',
+                caption: '2 devices available for issue'),
             const SizedBox(height: MaatriTokens.space12),
-            const _InfoCard(icon: Icons.badge_outlined, title: 'Care-team access', value: '6 active clinicians', caption: 'No pending access requests'),
+            const _InfoCard(
+                icon: Icons.badge_outlined,
+                title: 'Care-team access',
+                value: '6 active clinicians',
+                caption: 'No pending access requests'),
           ],
         ),
       );
@@ -151,7 +200,11 @@ class _ProfileScaffold extends StatelessWidget {
 }
 
 class _ProfileCard extends StatelessWidget {
-  const _ProfileCard({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  const _ProfileCard(
+      {required this.icon,
+      required this.title,
+      required this.subtitle,
+      required this.onTap});
 
   final IconData icon;
   final String title;
@@ -169,8 +222,17 @@ class _ProfileCard extends StatelessWidget {
               children: [
                 Icon(icon, size: 32, color: MaatriTokens.primary),
                 const SizedBox(width: MaatriTokens.space16),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: Theme.of(context).textTheme.titleLarge), const SizedBox(height: MaatriTokens.space4), Text(subtitle)])),
-                const Icon(Icons.arrow_forward_ios_rounded, size: 18, color: MaatriTokens.textMuted),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(title,
+                          style: Theme.of(context).textTheme.titleLarge),
+                      const SizedBox(height: MaatriTokens.space4),
+                      Text(subtitle)
+                    ])),
+                const Icon(Icons.arrow_forward_ios_rounded,
+                    size: 18, color: MaatriTokens.textMuted),
               ],
             ),
           ),
@@ -179,7 +241,12 @@ class _ProfileCard extends StatelessWidget {
 }
 
 class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.icon, required this.title, required this.value, required this.caption, this.color = MaatriTokens.primary});
+  const _InfoCard(
+      {required this.icon,
+      required this.title,
+      required this.value,
+      required this.caption,
+      this.color = MaatriTokens.primary});
 
   final IconData icon;
   final String title;
@@ -194,13 +261,21 @@ class _InfoCard extends StatelessWidget {
           leading: Icon(icon, color: color, size: 30),
           title: Text(title),
           subtitle: Text(caption),
-          trailing: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 130), child: Text(value, textAlign: TextAlign.end, style: Theme.of(context).textTheme.titleMedium)),
+          trailing: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 130),
+              child: Text(value,
+                  textAlign: TextAlign.end,
+                  style: Theme.of(context).textTheme.titleMedium)),
         ),
       );
 }
 
 class _PatientStatus extends StatelessWidget {
-  const _PatientStatus({required this.name, required this.detail, required this.status, required this.color});
+  const _PatientStatus(
+      {required this.name,
+      required this.detail,
+      required this.status,
+      required this.color});
 
   final String name;
   final String detail;
@@ -213,7 +288,11 @@ class _PatientStatus extends StatelessWidget {
           contentPadding: const EdgeInsets.all(MaatriTokens.space16),
           title: Text(name),
           subtitle: Text(detail),
-          trailing: Text(status, style: MaatriTokens.type(size: MaatriTokens.type14, weight: FontWeight.w800, color: color)),
+          trailing: Text(status,
+              style: MaatriTokens.type(
+                  size: MaatriTokens.type14,
+                  weight: FontWeight.w800,
+                  color: color)),
         ),
       );
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'core/app_theme.dart';
-import 'features/profiles/role_selection_page.dart';
+import 'features/patient/patient_home.dart';
 
 void main() => runApp(const MaatriWatchPatientApp());
 
@@ -14,6 +14,6 @@ class MaatriWatchPatientApp extends StatelessWidget {
         title: 'MaatriWatch',
         debugShowCheckedModeBanner: false,
         theme: maatriTheme(),
-        home: const RoleSelectionPage(),
+        home: const PatientHome(),
       );
 }

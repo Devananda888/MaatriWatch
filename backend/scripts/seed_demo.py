@@ -2,7 +2,7 @@
 
 This script is deliberately limited to demo-only data.  It does not create a
 database, apply migrations, configure Firebase, or print ``DATABASE_URL``.
-Run the three SQL migrations first, set ``DATABASE_URL``, then run:
+Run the four SQL migrations first, set ``DATABASE_URL``, then run:
 
     python scripts/seed_demo.py
 
@@ -83,8 +83,8 @@ def _require_database_url() -> str:
     database_url = os.getenv("DATABASE_URL")
     if not database_url:
         raise SystemExit(
-            "DATABASE_URL is required. Apply 001_initial_schema.sql, "
-            "002_ingestion_alerting.sql, and 003_clinician_dashboard.sql first."
+            "DATABASE_URL is required. Apply 001_initial_schema.sql through "
+            "004_patient_safety_workflows.sql first."
         )
     return database_url
 
@@ -151,7 +151,7 @@ def _require_migrated_schema(connection) -> None:
         missing = ", ".join([*missing_tables, *missing_columns])
         raise SystemExit(
             "MaatriWatch migrations are not fully applied (missing: "
-            f"{missing}). Apply 001_initial_schema.sql through 003_clinician_dashboard.sql, then retry."
+            f"{missing}). Apply 001_initial_schema.sql through 004_patient_safety_workflows.sql, then retry."
         )
 
 

@@ -14,6 +14,8 @@ from .config import Config
 from .db import close_db, init_db
 from .firebase import init_firebase
 from .ingestion import ingestion_bp
+from .patient import patient_bp
+from .devices import devices_bp
 from .outbox import deliver_pending_outbox
 
 
@@ -29,6 +31,8 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(auth_bp, url_prefix="/api/v1")
     app.register_blueprint(clinician_bp, url_prefix="/api/v1")
     app.register_blueprint(ingestion_bp, url_prefix="/api/v1")
+    app.register_blueprint(patient_bp, url_prefix="/api/v1")
+    app.register_blueprint(devices_bp, url_prefix="/api/v1")
 
     @app.after_request
     def protect_api_responses(response):
@@ -38,7 +42,7 @@ def create_app(test_config: dict | None = None) -> Flask:
         origin = request.headers.get("Origin", "").rstrip("/")
         if origin and origin in app.config.get("CORS_ALLOWED_ORIGINS", ()):
             response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PATCH, PUT, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, X-Demo-Role"
             response.headers["Access-Control-Max-Age"] = "600"
             response.headers.add("Vary", "Origin")
