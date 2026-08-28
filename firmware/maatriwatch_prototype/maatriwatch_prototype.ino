@@ -23,7 +23,6 @@
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <Wire.h>
-#include "heartRate.h"
 #include "spo2_algorithm.h"
 
 #include "secrets.h"
@@ -38,10 +37,11 @@ constexpr uint32_t SOS_HOLD_MS = 1200;
 // A low threshold makes the contact detector work with lower-cost MAX30102
 // breakouts.  The red/IR waveform-quality checks below still prevent a value
 // from being reported when a real pulse is not present.
-constexpr uint32_t MIN_IR_FOR_FINGER = 5000;
+constexpr uint32_t MIN_IR_FOR_FINGER = 10000;
 constexpr uint8_t FINGER_ON_SAMPLES = 3;
 constexpr uint8_t FINGER_OFF_SAMPLES = 25;
 constexpr uint8_t SPO2_BUFFER_SIZE = 100;  // Four seconds at 25 samples/second.
+constexpr uint32_t HEART_RATE_STALE_MS = 12000;
 constexpr uint32_t SPO2_STALE_MS = 45000;
 constexpr uint32_t DHT_INTERVAL_MS = 2200;
 constexpr uint32_t DHT_STALE_MS = 60000;
@@ -57,13 +57,13 @@ float humidity = NAN;
 uint32_t irBuffer[SPO2_BUFFER_SIZE];
 uint32_t redBuffer[SPO2_BUFFER_SIZE];
 uint8_t spo2SampleCount = 0;
-uint32_t lastBeatAt = 0;
 uint32_t lastUploadAt = 0;
 uint32_t lastDisplayAt = 0;
 uint32_t lastDhtAt = 0;
 uint32_t lastDhtValidAt = 0;
 uint32_t lastPpgDiagnosticAt = 0;
 uint32_t sosPressedAt = 0;
+uint32_t lastValidHeartRateAt = 0;
 uint32_t lastValidSpo2At = 0;
 uint32_t sequence = 0;
 bool fingerPresent = false;
@@ -77,6 +77,7 @@ uint32_t lastRed = 0;
 float ppgPerfusionIndex = NAN;
 uint8_t dhtReadFailures = 0;
 
+bool isHeartRateFresh();
 bool isSpo2Fresh();
 bool isAmbientFresh();
 
@@ -101,7 +102,7 @@ bool postTelemetry(bool sosPressed) {
   const String capturedAt = isoTimestamp();
   if (capturedAt.isEmpty()) return false;
 
-  const bool hasHeartRate = fingerPresent && !isnan(bpm) && bpm >= 20 && bpm <= 260;
+  const bool hasHeartRate = fingerPresent && isHeartRateFresh() && !isnan(bpm) && bpm >= 20 && bpm <= 260;
   const bool hasSpo2 = fingerPresent && isSpo2Fresh() && !isnan(spo2) && spo2 >= 70 && spo2 <= 100;
   const bool hasAmbient = isAmbientFresh();
   // The API intentionally rejects events with no observation.  Avoid sending
@@ -160,9 +161,13 @@ void clearPpgMeasurements() {
   spo2 = NAN;
   spo2MeasurementValid = false;
   spo2SampleCount = 0;
-  lastBeatAt = 0;
+  lastValidHeartRateAt = 0;
   lastValidSpo2At = 0;
   ppgPerfusionIndex = NAN;
+}
+
+bool isHeartRateFresh() {
+  return lastValidHeartRateAt != 0 && millis() - lastValidHeartRateAt <= HEART_RATE_STALE_MS;
 }
 
 bool isSpo2Fresh() {
@@ -179,6 +184,7 @@ void acceptHeartRate(float candidate) {
   // The first accepted value is displayed immediately.  Later values are
   // smoothed just enough to avoid a distracting flicker on the watch face.
   bpm = isnan(bpm) ? candidate : 0.65f * bpm + 0.35f * candidate;
+  lastValidHeartRateAt = millis();
 }
 
 void updateFingerPresence(uint32_t ir) {
@@ -215,15 +221,6 @@ void readPpg() {
       max3010x.nextSample();
       continue;
     }
-    if (checkForBeat(ir)) {
-      const uint32_t now = millis();
-      if (lastBeatAt != 0) {
-        const float candidate = 60.0f / ((now - lastBeatAt) / 1000.0f);
-        acceptHeartRate(candidate);
-      }
-      lastBeatAt = now;
-    }
-
     irBuffer[spo2SampleCount] = static_cast<uint32_t>(ir);
     redBuffer[spo2SampleCount] = static_cast<uint32_t>(red);
     spo2SampleCount++;
@@ -237,11 +234,6 @@ void readPpg() {
       maxim_heart_rate_and_oxygen_saturation(
           irBuffer, SPO2_BUFFER_SIZE, redBuffer,
           &calculatedSpo2, &validSpo2, &calculatedHeartRate, &validHeartRate);
-      // The reference algorithm works at the same 25 SPS as our 100-sample
-      // buffer. It is a reliable fallback when the faster beat edge detector
-      // is disrupted by a small finger movement, so a pulse can still reach
-      // the OLED and dashboard even when the SpO2 window itself is rejected.
-      if (validHeartRate) acceptHeartRate(static_cast<float>(calculatedHeartRate));
       uint32_t minIr = irBuffer[0];
       uint32_t maxIr = irBuffer[0];
       uint64_t irTotal = 0;
@@ -254,6 +246,10 @@ void readPpg() {
       const float meanIr = static_cast<float>(irTotal) / SPO2_BUFFER_SIZE;
       ppgPerfusionIndex = meanIr > 0 ? (maxIr - minIr) * 100.0f / meanIr : NAN;
       const bool hasPulseWave = !isnan(ppgPerfusionIndex) && ppgPerfusionIndex >= 0.15f;
+      // Do not accept a quick edge/noise spike as pulse. The reference
+      // algorithm must identify a physiologic-looking waveform in the full
+      // four-second window before the OLED or API sees a heart-rate value.
+      if (validHeartRate && hasPulseWave) acceptHeartRate(static_cast<float>(calculatedHeartRate));
       const bool validWindow = validSpo2 && hasPulseWave && calculatedSpo2 >= 70 && calculatedSpo2 <= 100;
       if (validWindow) {
         const float candidate = static_cast<float>(calculatedSpo2);
@@ -274,9 +270,9 @@ void readPpg() {
   // Monitor and is deliberately rate-limited.
   if (millis() - lastPpgDiagnosticAt >= 2000) {
     lastPpgDiagnosticAt = millis();
-    Serial.printf("PPG ir=%lu red=%lu contact=%s samples=%u bpm=%.1f spo2=%.1f pi=%.2f dhtFailures=%u\n",
+    Serial.printf("PPG ir=%lu red=%lu contact=%s samples=%u bpm=%.1f hrFresh=%s spo2=%.1f pi=%.2f dhtFailures=%u\n",
                   lastIr, lastRed, fingerPresent ? "yes" : "no",
-                  spo2SampleCount, bpm, spo2, ppgPerfusionIndex, dhtReadFailures);
+                  spo2SampleCount, bpm, isHeartRateFresh() ? "yes" : "no", spo2, ppgPerfusionIndex, dhtReadFailures);
   }
 }
 
@@ -326,7 +322,7 @@ void updateDisplay() {
   display.print("PULSE");
   display.setTextSize(2);
   display.setCursor(47, 10);
-  if (fingerPresent && !isnan(bpm)) display.printf("%.0f", bpm); else display.print("--");
+  if (fingerPresent && isHeartRateFresh() && !isnan(bpm)) display.printf("%.0f", bpm); else display.print("--");
   display.setTextSize(1);
   display.setCursor(82, 16);
   display.print("bpm");
@@ -339,7 +335,7 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setCursor(0, 56);
   if (!fingerPresent) display.print("Place finger on sensor");
-  else if (isnan(bpm)) display.print("Keep still, finding pulse");
+  else if (!isHeartRateFresh()) display.print("Keep still, finding pulse");
   else if (!isSpo2Fresh()) display.printf("SpO2 settling %u%%", (spo2SampleCount * 100) / SPO2_BUFFER_SIZE);
   else display.print("Reading updated");
   display.display();
