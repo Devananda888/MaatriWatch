@@ -4,7 +4,7 @@ from uuid import uuid4
 import unittest
 
 from app.clinician import _wire
-from app.firebase import _is_newer_alert
+from app.firebase import _is_newer_alert, clinician_entitlements
 
 
 class ClinicianHelperTest(unittest.TestCase):
@@ -37,6 +37,18 @@ class ClinicianHelperTest(unittest.TestCase):
             "status": "resolved",
         }
         self.assertTrue(_is_newer_alert(resolved, current))
+
+    def test_clinician_entitlements_are_hospital_scoped(self):
+        grants = clinician_entitlements(
+            [
+                {"hospital_id": "hospital-a", "role": "clinician", "is_active": True},
+                {"hospital_id": "hospital-b", "role": "clinician", "is_active": False},
+                {"hospital_id": "hospital-c", "role": "patient", "is_active": True},
+            ]
+        )
+        self.assertTrue(grants["hospital-a"]["can_read_all_live_vitals"])
+        self.assertFalse(grants["hospital-b"]["active"])
+        self.assertFalse(grants["hospital-c"]["can_read_alert_queue"])
 
 
 if __name__ == "__main__":

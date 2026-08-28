@@ -8,6 +8,7 @@ from firebase_admin import auth as firebase_auth
 from flask import Blueprint, abort, current_app, g, jsonify, request
 
 from .db import get_db
+from .firebase import sync_clinician_entitlements
 
 auth_bp = Blueprint("auth", __name__)
 _DEMO_ROLE_UIDS = {
@@ -82,6 +83,18 @@ def memberships_for(user_id: str):
         return cursor.fetchall()
 
 
+def memberships_for_realtime(user_id: str):
+    """All memberships, including inactive records, for RTDB grant refresh."""
+    with get_db().cursor() as cursor:
+        cursor.execute(
+            """SELECT hospital_id, role, is_active
+                 FROM hospital_memberships
+                 WHERE user_id = %s""",
+            (user_id,),
+        )
+        return cursor.fetchall()
+
+
 def require_hospital_role(*roles):
     """Require a current active role at the hospital selected by a trusted route value."""
     def decorator(view):
@@ -124,6 +137,11 @@ def current_user():
                 ],
             }
         )
+    memberships = memberships_for(g.actor["id"])
+    # The browser connects directly to RTDB for live overlays. Refresh its
+    # narrow read grants on each dashboard session; Postgres remains the
+    # source of authority and REST continues to work if RTDB is unavailable.
+    sync_clinician_entitlements(g.actor["firebase_uid"], memberships_for_realtime(g.actor["id"]))
     return jsonify(
         {
             "user": {
@@ -133,7 +151,7 @@ def current_user():
             },
             "hospital_memberships": [
                 {"hospital_id": str(row["hospital_id"]), "hospital_name": row["hospital_name"], "role": row["role"]}
-                for row in memberships_for(g.actor["id"])
+                for row in memberships
             ],
         }
     )

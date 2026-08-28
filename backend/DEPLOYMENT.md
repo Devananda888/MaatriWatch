@@ -46,8 +46,11 @@ non-production database.
    string—never commit the file.
 5. Set `FIREBASE_PROJECT_ID` and `FIREBASE_DATABASE_URL`.
 6. Deploy the database rules in `backend/firebase/database.rules.json` after
-   reviewing them for the production project. Server code writes the live
-   projections; browser clients must never receive the service-account key.
+   reviewing them for the production project. On a clinician's successful
+   dashboard sign-in, the server refreshes that clinician's minimal RTDB
+   read-entitlement projection from their Postgres membership. Server code
+   writes the live projections; browser clients must never receive the
+   service-account key.
 
 ## 4. Required environment variables
 

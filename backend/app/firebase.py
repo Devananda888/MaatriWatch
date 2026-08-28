@@ -81,6 +81,44 @@ def project_live_alert(hospital_id: str, alert_id: str, alert: dict):
     reference.transaction(keep_newest)
 
 
+def clinician_entitlements(memberships: list[dict]) -> dict[str, dict]:
+    """Build the minimal RTDB grants required by the clinician dashboard.
+
+    Postgres is the authority for memberships.  RTDB receives only this small
+    read-entitlement projection so its rules can permit live subscriptions
+    without exposing hospital records to every authenticated Firebase user.
+    """
+    values: dict[str, dict] = {}
+    for membership in memberships:
+        hospital_id = str(membership["hospital_id"])
+        role = membership["role"]
+        active = bool(membership.get("is_active", True)) and role in {"clinician", "hospital_admin"}
+        values[hospital_id] = {
+            "role": role,
+            "active": active,
+            "can_read_all_live_vitals": active,
+            "can_read_alert_queue": active,
+        }
+    return values
+
+
+def sync_clinician_entitlements(firebase_uid: str, memberships: list[dict]) -> None:
+    """Best-effort refresh of a signed-in clinician's RTDB read grants.
+
+    A failure here must not prevent the REST dashboard from using the durable
+    Postgres record.  It simply leaves the UI in its existing Refresh fallback.
+    """
+    if not current_app.config.get("FIREBASE_RTDB_READY"):
+        return
+    entitlements = clinician_entitlements(memberships)
+    if not entitlements:
+        return
+    try:
+        db.reference(f"access/{firebase_uid}").update(entitlements)
+    except Exception:
+        current_app.logger.exception("Failed to refresh Firebase RTDB clinician entitlements")
+
+
 def publish_realtime_projection(topic: str, payload: dict):
     """Dispatch a durable outbox message to its Firebase RTDB projection."""
     if topic == "live_vitals":
