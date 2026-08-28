@@ -46,14 +46,6 @@ constexpr uint32_t SPO2_STALE_MS = 45000;
 constexpr uint32_t DHT_INTERVAL_MS = 2200;
 constexpr uint32_t DHT_STALE_MS = 60000;
 
-// This is deliberately a display-only prototype aid.  A MAX30102 by itself
-// cannot measure blood pressure.  If a clinician records a cuff measurement
-// during a supervised demonstration, enter it here to show that *reference*
-// on the watch.  Leave these as zero for normal use.  These values are never
-// sent to the API, stored in the dashboard, or used by alert rules.
-constexpr int PROTOTYPE_BP_CUFF_SYSTOLIC = 0;
-constexpr int PROTOTYPE_BP_CUFF_DIASTOLIC = 0;
-
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 DHT dht(PIN_DHT, DHT11);
 MAX30105 max3010x;
@@ -307,14 +299,6 @@ void drawCalmAnimation() {
   if (phase < 0.30f) display.drawCircle(117, 7, heartSize + 3, SSD1306_WHITE);
 }
 
-const char* calmMessage() {
-  switch ((millis() / 4000) % 3) {
-    case 0: return "Breathe in, breathe out";
-    case 1: return "You are supported";
-    default: return "One calm moment";
-  }
-}
-
 void updateDisplay() {
   if (millis() - lastDisplayAt < OLED_INTERVAL_MS) return;
   lastDisplayAt = millis();
@@ -324,28 +308,28 @@ void updateDisplay() {
   display.setCursor(0, 0);
   display.print("MaatriWatch");
   drawCalmAnimation();
-  display.setCursor(0, 12);
-  display.print("Pulse: ");
-  if (fingerPresent && !isnan(bpm)) display.printf("%.0f bpm", bpm);
-  else if (fingerPresent) display.print("finding rhythm");
-  else display.print("place finger gently");
-  display.setCursor(0, 23);
-  display.print("SpO2: ");
-  if (fingerPresent && isSpo2Fresh() && !isnan(spo2)) display.printf("%.0f%%", spo2);
-  else if (fingerPresent) display.printf("settling %u%%", (spo2SampleCount * 100) / SPO2_BUFFER_SIZE);
-  else display.print("awaiting contact");
+  // A watch face should be readable in one glance. Environmental readings
+  // continue to upload to the dashboard but stay off this small display.
+  display.setCursor(0, 13);
+  display.print("PULSE");
+  display.setTextSize(2);
+  display.setCursor(47, 10);
+  if (fingerPresent && !isnan(bpm)) display.printf("%.0f", bpm); else display.print("--");
+  display.setTextSize(1);
+  display.setCursor(82, 16);
+  display.print("bpm");
+
   display.setCursor(0, 34);
-  if (PROTOTYPE_BP_CUFF_SYSTOLIC > 0 && PROTOTYPE_BP_CUFF_DIASTOLIC > 0) {
-    display.printf("BP demo: %d/%d*", PROTOTYPE_BP_CUFF_SYSTOLIC, PROTOTYPE_BP_CUFF_DIASTOLIC);
-  } else {
-    display.print("BP: cuff calibration needed");
-  }
-  display.setCursor(0, 45);
-  display.print("Air: ");
-  if (isAmbientFresh()) display.printf("%.1fC  %.0f%%", airTemperature, humidity);
-  else display.print("checking DHT11...");
+  display.print("SpO2");
+  display.setTextSize(2);
+  display.setCursor(47, 31);
+  if (fingerPresent && isSpo2Fresh() && !isnan(spo2)) display.printf("%.0f%%", spo2); else display.print("--");
+  display.setTextSize(1);
   display.setCursor(0, 56);
-  display.print(calmMessage());
+  if (!fingerPresent) display.print("Place finger on sensor");
+  else if (isnan(bpm)) display.print("Keep still, finding pulse");
+  else if (!isSpo2Fresh()) display.printf("SpO2 settling %u%%", (spo2SampleCount * 100) / SPO2_BUFFER_SIZE);
+  else display.print("Reading updated");
   display.display();
 }
 

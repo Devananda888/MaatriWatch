@@ -51,9 +51,11 @@ message; it never pauses sensor collection or uploads. It reports:
 - `Pulse`: a prototype PPG pulse estimate after finger contact is detected.
 - `SpO2`: a prototype ratio-of-ratios estimate after one full four-second
   window is valid. Keep the finger still while it is settling.
-- `Air`: DHT11 **ambient** temperature and humidity, not body temperature.
-- `BP`: `cuff calibration needed` by default. The watch cannot infer a safe
-  blood-pressure value from this single MAX30102 sensor.
+- A single short status prompt, only while the watch is acquiring a reading.
+
+Ambient DHT11 temperature/humidity are sent to the dashboard, but intentionally
+stay off the watch face so the screen remains readable at a glance. They are
+environmental readings, never body temperature.
 
 For hardware diagnosis, open Arduino IDE's Serial Monitor at **115200 baud**.
 Every two seconds firmware prints `ir`, `red`, `contact`, `samples`, `bpm`,
@@ -62,25 +64,6 @@ must appear and the `samples` count should climb to 100. If it stays at zero
 or `contact=no`, re-check the MAX30102 wiring, its 3.3 V supply, and that the
 sensor window is fully covered. If `dhtFailures` keeps increasing, re-check
 the DHT11 data pin and its pull-up resistor.
-
-## Supervised BP screen demonstration only
-
-The firmware intentionally does **not** calculate, upload, chart, or alert on
-blood pressure from MAX30102 data. Research-grade PPG BP systems need a
-reference-cuff calibration and clinical validation; this prototype does not
-have either. For a supervised UI demonstration only, a clinician may edit
-these two constants near the top of the sketch to a **same-session cuff
-reading**:
-
-```cpp
-constexpr int PROTOTYPE_BP_CUFF_SYSTOLIC = 118;
-constexpr int PROTOTYPE_BP_CUFF_DIASTOLIC = 76;
-```
-
-The OLED will then show `BP demo: 118/76*`. The asterisk means it is a
-manually entered cuff reference, not a value produced by the watch. It is
-display-only and is never sent to the dashboard. Restore both constants to
-`0` after the demonstration.
 
 ## Hospital lifecycle
 
