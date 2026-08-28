@@ -17,6 +17,8 @@ class DemoStoreTest(unittest.TestCase):
         second_patient = patients["items"][1]["id"]
         self.assertTrue(self.store.screenings(second_patient)["items"] or self.store.screenings(patients["items"][-1]["id"])["items"])
         self.assertGreaterEqual(len(self.store.alert_list(status="active")["items"]), 2)
+        self.assertIsNotNone(patients["items"][0]["latest_vital"]["ambient_temperature_c"])
+        self.assertIsNotNone(patients["items"][0]["latest_vital"]["ambient_humidity_percent"])
 
     def test_new_fall_uses_the_existing_threshold_engine(self):
         device = next(iter(self.store._devices.values()))

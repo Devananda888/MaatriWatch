@@ -35,13 +35,24 @@ constexpr uint8_t I2C_SCL = 22;
 constexpr uint32_t UPLOAD_INTERVAL_MS = 15000;
 constexpr uint32_t OLED_INTERVAL_MS = 500;
 constexpr uint32_t SOS_HOLD_MS = 1200;
-// Low-cost MAX30102 boards vary substantially in their raw IR counts.  10,000
-// reliably separates an uncovered sensor from a finger on the supplied board
-// while avoiding the 50,000 threshold that rejected valid fingertip contact.
-constexpr uint32_t MIN_IR_FOR_FINGER = 10000;
-constexpr uint8_t FINGER_ON_SAMPLES = 2;
-constexpr uint8_t FINGER_OFF_SAMPLES = 6;
-constexpr uint8_t SPO2_BUFFER_SIZE = 100;  // 4 s at the library's effective 25 SPS configuration.
+// A low threshold makes the contact detector work with lower-cost MAX30102
+// breakouts.  The red/IR waveform-quality checks below still prevent a value
+// from being reported when a real pulse is not present.
+constexpr uint32_t MIN_IR_FOR_FINGER = 5000;
+constexpr uint8_t FINGER_ON_SAMPLES = 3;
+constexpr uint8_t FINGER_OFF_SAMPLES = 25;
+constexpr uint8_t SPO2_BUFFER_SIZE = 100;  // Four seconds at 25 samples/second.
+constexpr uint32_t SPO2_STALE_MS = 45000;
+constexpr uint32_t DHT_INTERVAL_MS = 2200;
+constexpr uint32_t DHT_STALE_MS = 60000;
+
+// This is deliberately a display-only prototype aid.  A MAX30102 by itself
+// cannot measure blood pressure.  If a clinician records a cuff measurement
+// during a supervised demonstration, enter it here to show that *reference*
+// on the watch.  Leave these as zero for normal use.  These values are never
+// sent to the API, stored in the dashboard, or used by alert rules.
+constexpr int PROTOTYPE_BP_CUFF_SYSTOLIC = 0;
+constexpr int PROTOTYPE_BP_CUFF_DIASTOLIC = 0;
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
 DHT dht(PIN_DHT, DHT11);
@@ -58,8 +69,10 @@ uint32_t lastBeatAt = 0;
 uint32_t lastUploadAt = 0;
 uint32_t lastDisplayAt = 0;
 uint32_t lastDhtAt = 0;
+uint32_t lastDhtValidAt = 0;
 uint32_t lastPpgDiagnosticAt = 0;
 uint32_t sosPressedAt = 0;
+uint32_t lastValidSpo2At = 0;
 uint32_t sequence = 0;
 bool fingerPresent = false;
 bool spo2MeasurementValid = false;
@@ -69,6 +82,11 @@ uint8_t consecutiveFingerSamples = 0;
 uint8_t consecutiveNoFingerSamples = 0;
 uint32_t lastIr = 0;
 uint32_t lastRed = 0;
+float ppgPerfusionIndex = NAN;
+uint8_t dhtReadFailures = 0;
+
+bool isSpo2Fresh();
+bool isAmbientFresh();
 
 String isoTimestamp() {
   time_t now = time(nullptr);
@@ -92,8 +110,8 @@ bool postTelemetry(bool sosPressed) {
   if (capturedAt.isEmpty()) return false;
 
   const bool hasHeartRate = fingerPresent && !isnan(bpm) && bpm >= 20 && bpm <= 260;
-  const bool hasSpo2 = fingerPresent && spo2MeasurementValid && !isnan(spo2) && spo2 >= 70 && spo2 <= 100;
-  const bool hasAmbient = !isnan(airTemperature) || !isnan(humidity);
+  const bool hasSpo2 = fingerPresent && isSpo2Fresh() && !isnan(spo2) && spo2 >= 70 && spo2 <= 100;
+  const bool hasAmbient = isAmbientFresh();
   // The API intentionally rejects events with no observation.  Avoid sending
   // an empty periodic event while the watch is off-wrist; an SOS is still a
   // meaningful event and must always be uploaded.
@@ -109,8 +127,8 @@ bool postTelemetry(bool sosPressed) {
   // DHT11 is intentionally reported as ambient only, never as maternal body temperature.
   if (hasHeartRate) payload["heart_rate_bpm"] = (int)round(bpm);
   if (hasSpo2) payload["spo2_percent"] = round(spo2 * 10.0f) / 10.0f;
-  if (!isnan(airTemperature)) payload["ambient_temperature_c"] = round(airTemperature * 10.0f) / 10.0f;
-  if (!isnan(humidity)) payload["ambient_humidity_percent"] = round(humidity * 10.0f) / 10.0f;
+  if (hasAmbient && !isnan(airTemperature)) payload["ambient_temperature_c"] = round(airTemperature * 10.0f) / 10.0f;
+  if (hasAmbient && !isnan(humidity)) payload["ambient_humidity_percent"] = round(humidity * 10.0f) / 10.0f;
   JsonObject motion = payload["motion"].to<JsonObject>();
   if (sosPressed) motion["sos_pressed"] = true;
 
@@ -151,6 +169,17 @@ void clearPpgMeasurements() {
   spo2MeasurementValid = false;
   spo2SampleCount = 0;
   lastBeatAt = 0;
+  lastValidSpo2At = 0;
+  ppgPerfusionIndex = NAN;
+}
+
+bool isSpo2Fresh() {
+  return spo2MeasurementValid && lastValidSpo2At != 0 && millis() - lastValidSpo2At <= SPO2_STALE_MS;
+}
+
+bool isAmbientFresh() {
+  return lastDhtValidAt != 0 && millis() - lastDhtValidAt <= DHT_STALE_MS &&
+         !isnan(airTemperature) && !isnan(humidity);
 }
 
 void updateFingerPresence(uint32_t ir) {
@@ -172,10 +201,11 @@ void updateFingerPresence(uint32_t ir) {
 
 void readPpg() {
   if (!maxReady) return;
-  // safeCheck waits briefly for a fresh FIFO record.  The sensor library's
-  // getFIFO* methods then read the record at the FIFO tail; getIR()/getRed()
-  // fetch the latest record instead and can duplicate/drop samples here.
-  if (!max3010x.safeCheck(8)) return;
+  // `check()` reads all newly available FIFO records.  The MAX30102 is set to
+  // 25 SPS below, matching the 100-sample / four-second Maxim SpO2 window.
+  // getIR()/getRed() would re-read the latest item and can drop samples here,
+  // so consume each FIFO record and advance it exactly once.
+  max3010x.check();
   while (max3010x.available()) {
     const uint32_t ir = max3010x.getFIFOIR();
     const uint32_t red = max3010x.getFIFORed();
@@ -208,13 +238,28 @@ void readPpg() {
       maxim_heart_rate_and_oxygen_saturation(
           irBuffer, SPO2_BUFFER_SIZE, redBuffer,
           &calculatedSpo2, &validSpo2, &calculatedHeartRate, &validHeartRate);
-      spo2MeasurementValid = validSpo2 && calculatedSpo2 >= 70 && calculatedSpo2 <= 100;
-      if (spo2MeasurementValid) {
+      uint32_t minIr = irBuffer[0];
+      uint32_t maxIr = irBuffer[0];
+      uint64_t irTotal = 0;
+      for (uint8_t index = 0; index < SPO2_BUFFER_SIZE; ++index) {
+        const uint32_t value = irBuffer[index];
+        if (value < minIr) minIr = value;
+        if (value > maxIr) maxIr = value;
+        irTotal += value;
+      }
+      const float meanIr = static_cast<float>(irTotal) / SPO2_BUFFER_SIZE;
+      ppgPerfusionIndex = meanIr > 0 ? (maxIr - minIr) * 100.0f / meanIr : NAN;
+      const bool hasPulseWave = !isnan(ppgPerfusionIndex) && ppgPerfusionIndex >= 0.15f;
+      const bool validWindow = validSpo2 && hasPulseWave && calculatedSpo2 >= 70 && calculatedSpo2 <= 100;
+      if (validWindow) {
         const float candidate = static_cast<float>(calculatedSpo2);
         spo2 = isnan(spo2) ? candidate : 0.8f * spo2 + 0.2f * candidate;
-      } else {
-        spo2 = NAN;
+        spo2MeasurementValid = true;
+        lastValidSpo2At = millis();
       }
+      // A single motion-corrupted window must not blank a good value that was
+      // just acquired.  It becomes unavailable automatically after 45 seconds
+      // or immediately when finger contact is lost.
       spo2SampleCount = 0;
     }
     max3010x.nextSample();
@@ -225,9 +270,48 @@ void readPpg() {
   // Monitor and is deliberately rate-limited.
   if (millis() - lastPpgDiagnosticAt >= 2000) {
     lastPpgDiagnosticAt = millis();
-    Serial.printf("PPG ir=%lu red=%lu contact=%s samples=%u bpm=%.1f spo2=%.1f\n",
+    Serial.printf("PPG ir=%lu red=%lu contact=%s samples=%u bpm=%.1f spo2=%.1f pi=%.2f dhtFailures=%u\n",
                   lastIr, lastRed, fingerPresent ? "yes" : "no",
-                  spo2SampleCount, bpm, spo2);
+                  spo2SampleCount, bpm, spo2, ppgPerfusionIndex, dhtReadFailures);
+  }
+}
+
+void readAmbientSensor() {
+  const float nextTemperature = dht.readTemperature();
+  const float nextHumidity = dht.readHumidity();
+  if (!isnan(nextTemperature) && !isnan(nextHumidity)) {
+    airTemperature = nextTemperature;
+    humidity = nextHumidity;
+    lastDhtValidAt = millis();
+    dhtReadFailures = 0;
+    return;
+  }
+  if (dhtReadFailures < 255) dhtReadFailures++;
+  Serial.println("DHT11 read failed; keeping the last fresh ambient reading.");
+}
+
+void drawHeart(int16_t x, int16_t y, uint8_t radius) {
+  // A small, pulsing heart gives reassurance without delaying sensor reads.
+  display.fillCircle(x - radius / 2, y, radius / 2, SSD1306_WHITE);
+  display.fillCircle(x + radius / 2, y, radius / 2, SSD1306_WHITE);
+  display.fillTriangle(x - radius, y, x + radius, y, x, y + radius + 2, SSD1306_WHITE);
+}
+
+void drawCalmAnimation() {
+  const uint32_t cycle = !isnan(bpm) && bpm >= 35 && bpm <= 180
+                             ? static_cast<uint32_t>(60000.0f / bpm)
+                             : 1200;
+  const float phase = static_cast<float>(millis() % cycle) / cycle;
+  const uint8_t heartSize = 6 + static_cast<uint8_t>(3.0f * (0.5f + 0.5f * sinf(phase * TWO_PI)));
+  drawHeart(117, 7, heartSize);
+  if (phase < 0.30f) display.drawCircle(117, 7, heartSize + 3, SSD1306_WHITE);
+}
+
+const char* calmMessage() {
+  switch ((millis() / 4000) % 3) {
+    case 0: return "Breathe in, breathe out";
+    case 1: return "You are supported";
+    default: return "One calm moment";
   }
 }
 
@@ -239,21 +323,29 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.print("MaatriWatch");
-  display.setCursor(0, 10);
-  display.print(WiFi.status() == WL_CONNECTED ? "Wi-Fi: connected" : "Wi-Fi: reconnecting");
-  display.setCursor(0, 22);
+  drawCalmAnimation();
+  display.setCursor(0, 12);
   display.print("Pulse: ");
-  if (fingerPresent && !isnan(bpm)) display.printf("%.0f bpm", bpm); else display.print("touch sensor");
-  display.setCursor(0, 33);
+  if (fingerPresent && !isnan(bpm)) display.printf("%.0f bpm", bpm);
+  else if (fingerPresent) display.print("finding rhythm");
+  else display.print("place finger gently");
+  display.setCursor(0, 23);
   display.print("SpO2: ");
-  if (spo2MeasurementValid && !isnan(spo2)) display.printf("%.0f%%", spo2); else if (fingerPresent) display.print("measuring"); else display.print("awaiting contact");
-  display.setCursor(0, 44);
-  // MAX30102 alone cannot provide a safe BP number. Keeping this explicit
-  // prevents an experimental signal from being confused with a cuff reading.
-  display.print("BP: cuff required");
-  display.setCursor(0, 55);
+  if (fingerPresent && isSpo2Fresh() && !isnan(spo2)) display.printf("%.0f%%", spo2);
+  else if (fingerPresent) display.printf("settling %u%%", (spo2SampleCount * 100) / SPO2_BUFFER_SIZE);
+  else display.print("awaiting contact");
+  display.setCursor(0, 34);
+  if (PROTOTYPE_BP_CUFF_SYSTOLIC > 0 && PROTOTYPE_BP_CUFF_DIASTOLIC > 0) {
+    display.printf("BP demo: %d/%d*", PROTOTYPE_BP_CUFF_SYSTOLIC, PROTOTYPE_BP_CUFF_DIASTOLIC);
+  } else {
+    display.print("BP: cuff calibration needed");
+  }
+  display.setCursor(0, 45);
   display.print("Air: ");
-  if (!isnan(airTemperature)) display.printf("%.0fC  %.0f%%", airTemperature, humidity); else display.print("DHT unavailable");
+  if (isAmbientFresh()) display.printf("%.1fC  %.0f%%", airTemperature, humidity);
+  else display.print("checking DHT11...");
+  display.setCursor(0, 56);
+  display.print(calmMessage());
   display.display();
 }
 
@@ -279,10 +371,13 @@ void setup() {
     display.setCursor(0, 16); display.print("MAX30102 not found"); display.display();
   } else {
     maxReady = true;
-    // power, sample average, LED mode, sample rate, pulse width, ADC range
-    max3010x.setup(60, 4, 2, 100, 411, 4096);
-    max3010x.setPulseAmplitudeRed(0x1F);
-    max3010x.setPulseAmplitudeIR(0x1F);
+    // power, sample average, LED mode, sample rate, pulse width, ADC range.
+    // The 25 SPS rate is intentional: the Maxim algorithm receives exactly
+    // four seconds of PPG per 100-sample evaluation window.
+    max3010x.setup(80, 4, 2, 25, 411, 4096);
+    max3010x.setPulseAmplitudeRed(0x3F);
+    max3010x.setPulseAmplitudeIR(0x3F);
+    max3010x.setPulseAmplitudeGreen(0);
   }
 
   WiFi.mode(WIFI_STA);
@@ -295,10 +390,9 @@ void setup() {
 void loop() {
   readPpg();
   handleSosButton();
-  if (millis() - lastDhtAt > 1800) {
+  if (millis() - lastDhtAt >= DHT_INTERVAL_MS) {
     lastDhtAt = millis();
-    airTemperature = dht.readTemperature();
-    humidity = dht.readHumidity();
+    readAmbientSensor();
   }
   if (millis() - lastUploadAt >= UPLOAD_INTERVAL_MS) {
     lastUploadAt = millis();

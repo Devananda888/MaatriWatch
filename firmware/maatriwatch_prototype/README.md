@@ -37,9 +37,50 @@ cell while unattended, and use a protected LiPo.
    `MaatriWatch-Setup` Wi-Fi network (using `PROVISIONING_PASSWORD`) and complete the captive portal. ESP32
    station mode is the correct internet-connected mode; SoftAP/BLE are suitable
    provisioning transports, not the clinical data channel. [Espressif Wi-Fi documentation](https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/wifi.html)
-5. Put a finger firmly over the MAX30102 for 10–20 seconds. The OLED shows a
-   smoothed prototype pulse and SpO₂ estimate; hold the button 1.2 seconds to
-   issue SOS.
+5. Put a finger gently and still over the MAX30102 for 10–20 seconds. The OLED
+   first shows **finding rhythm** and a four-second SpO₂ settling indicator;
+   after it finds a clean PPG waveform, it keeps the last valid estimate for
+   up to 45 seconds so one motion-corrupted window does not blank the display.
+   Hold the button 1.2 seconds to issue SOS.
+
+## Reading the OLED and Serial Monitor
+
+The OLED uses a non-blocking pulsing-heart animation and rotating calming
+message; it never pauses sensor collection or uploads. It reports:
+
+- `Pulse`: a prototype PPG pulse estimate after finger contact is detected.
+- `SpO2`: a prototype ratio-of-ratios estimate after one full four-second
+  window is valid. Keep the finger still while it is settling.
+- `Air`: DHT11 **ambient** temperature and humidity, not body temperature.
+- `BP`: `cuff calibration needed` by default. The watch cannot infer a safe
+  blood-pressure value from this single MAX30102 sensor.
+
+For hardware diagnosis, open Arduino IDE's Serial Monitor at **115200 baud**.
+Every two seconds firmware prints `ir`, `red`, `contact`, `samples`, `bpm`,
+`spo2`, `pi`, and DHT failure count. With a finger in place, `contact=yes`
+must appear and the `samples` count should climb to 100. If it stays at zero
+or `contact=no`, re-check the MAX30102 wiring, its 3.3 V supply, and that the
+sensor window is fully covered. If `dhtFailures` keeps increasing, re-check
+the DHT11 data pin and its pull-up resistor.
+
+## Supervised BP screen demonstration only
+
+The firmware intentionally does **not** calculate, upload, chart, or alert on
+blood pressure from MAX30102 data. Research-grade PPG BP systems need a
+reference-cuff calibration and clinical validation; this prototype does not
+have either. For a supervised UI demonstration only, a clinician may edit
+these two constants near the top of the sketch to a **same-session cuff
+reading**:
+
+```cpp
+constexpr int PROTOTYPE_BP_CUFF_SYSTOLIC = 118;
+constexpr int PROTOTYPE_BP_CUFF_DIASTOLIC = 76;
+```
+
+The OLED will then show `BP demo: 118/76*`. The asterisk means it is a
+manually entered cuff reference, not a value produced by the watch. It is
+display-only and is never sent to the dashboard. Restore both constants to
+`0` after the demonstration.
 
 ## Hospital lifecycle
 

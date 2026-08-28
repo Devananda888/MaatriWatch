@@ -217,7 +217,8 @@ def patients(hospital_id: str):
             f"""SELECT p.id, p.medical_record_number, p.full_name, p.preferred_language,
                        p.delivery_date, latest_vital.captured_at AS latest_captured_at,
                        latest_vital.heart_rate_bpm, latest_vital.spo2_percent,
-                       latest_vital.temperature_c, latest_vital.systolic_bp,
+                       latest_vital.temperature_c, latest_vital.ambient_temperature_c,
+                       latest_vital.ambient_humidity_percent, latest_vital.systolic_bp,
                        latest_vital.diastolic_bp, device.id AS device_id,
                        device.serial_number AS device_serial_number,
                        device.last_seen_at AS device_last_seen_at,
@@ -226,6 +227,7 @@ def patients(hospital_id: str):
                 FROM patients p
                 LEFT JOIN LATERAL (
                     SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c,
+                           ambient_temperature_c, ambient_humidity_percent,
                            systolic_bp, diastolic_bp
                     FROM vital_readings
                     WHERE hospital_id = p.hospital_id AND patient_id = p.id
@@ -272,6 +274,8 @@ def patients(hospital_id: str):
                         "heart_rate_bpm": value["heart_rate_bpm"],
                         "spo2_percent": value["spo2_percent"],
                         "temperature_c": value["temperature_c"],
+                        "ambient_temperature_c": value["ambient_temperature_c"],
+                        "ambient_humidity_percent": value["ambient_humidity_percent"],
                         "systolic_bp": value["systolic_bp"],
                         "diastolic_bp": value["diastolic_bp"],
                     }
