@@ -174,6 +174,13 @@ bool isAmbientFresh() {
          !isnan(airTemperature) && !isnan(humidity);
 }
 
+void acceptHeartRate(float candidate) {
+  if (candidate < 35 || candidate > 220) return;
+  // The first accepted value is displayed immediately.  Later values are
+  // smoothed just enough to avoid a distracting flicker on the watch face.
+  bpm = isnan(bpm) ? candidate : 0.65f * bpm + 0.35f * candidate;
+}
+
 void updateFingerPresence(uint32_t ir) {
   if (ir >= MIN_IR_FOR_FINGER) {
     consecutiveNoFingerSamples = 0;
@@ -212,7 +219,7 @@ void readPpg() {
       const uint32_t now = millis();
       if (lastBeatAt != 0) {
         const float candidate = 60.0f / ((now - lastBeatAt) / 1000.0f);
-        if (candidate >= 35 && candidate <= 220) bpm = isnan(bpm) ? candidate : 0.75f * bpm + 0.25f * candidate;
+        acceptHeartRate(candidate);
       }
       lastBeatAt = now;
     }
@@ -230,6 +237,11 @@ void readPpg() {
       maxim_heart_rate_and_oxygen_saturation(
           irBuffer, SPO2_BUFFER_SIZE, redBuffer,
           &calculatedSpo2, &validSpo2, &calculatedHeartRate, &validHeartRate);
+      // The reference algorithm works at the same 25 SPS as our 100-sample
+      // buffer. It is a reliable fallback when the faster beat edge detector
+      // is disrupted by a small finger movement, so a pulse can still reach
+      // the OLED and dashboard even when the SpO2 window itself is rejected.
+      if (validHeartRate) acceptHeartRate(static_cast<float>(calculatedHeartRate));
       uint32_t minIr = irBuffer[0];
       uint32_t maxIr = irBuffer[0];
       uint64_t irTotal = 0;
