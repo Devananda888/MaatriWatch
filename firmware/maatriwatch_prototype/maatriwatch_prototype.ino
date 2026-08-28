@@ -35,7 +35,12 @@ constexpr uint8_t I2C_SCL = 22;
 constexpr uint32_t UPLOAD_INTERVAL_MS = 15000;
 constexpr uint32_t OLED_INTERVAL_MS = 500;
 constexpr uint32_t SOS_HOLD_MS = 1200;
-constexpr uint32_t MIN_IR_FOR_FINGER = 50000;
+// Low-cost MAX30102 boards vary substantially in their raw IR counts.  10,000
+// reliably separates an uncovered sensor from a finger on the supplied board
+// while avoiding the 50,000 threshold that rejected valid fingertip contact.
+constexpr uint32_t MIN_IR_FOR_FINGER = 10000;
+constexpr uint8_t FINGER_ON_SAMPLES = 2;
+constexpr uint8_t FINGER_OFF_SAMPLES = 6;
 constexpr uint8_t SPO2_BUFFER_SIZE = 100;  // 4 s at the library's effective 25 SPS configuration.
 
 Adafruit_SSD1306 display(128, 64, &Wire, -1);
@@ -53,12 +58,17 @@ uint32_t lastBeatAt = 0;
 uint32_t lastUploadAt = 0;
 uint32_t lastDisplayAt = 0;
 uint32_t lastDhtAt = 0;
+uint32_t lastPpgDiagnosticAt = 0;
 uint32_t sosPressedAt = 0;
 uint32_t sequence = 0;
 bool fingerPresent = false;
 bool spo2MeasurementValid = false;
 bool sosSentForPress = false;
 bool maxReady = false;
+uint8_t consecutiveFingerSamples = 0;
+uint8_t consecutiveNoFingerSamples = 0;
+uint32_t lastIr = 0;
+uint32_t lastRed = 0;
 
 String isoTimestamp() {
   time_t now = time(nullptr);
@@ -143,15 +153,36 @@ void clearPpgMeasurements() {
   lastBeatAt = 0;
 }
 
+void updateFingerPresence(uint32_t ir) {
+  if (ir >= MIN_IR_FOR_FINGER) {
+    consecutiveNoFingerSamples = 0;
+    if (consecutiveFingerSamples < FINGER_ON_SAMPLES) consecutiveFingerSamples++;
+    if (consecutiveFingerSamples >= FINGER_ON_SAMPLES) fingerPresent = true;
+    return;
+  }
+
+  consecutiveFingerSamples = 0;
+  if (consecutiveNoFingerSamples < FINGER_OFF_SAMPLES) consecutiveNoFingerSamples++;
+  // Do not discard a valid reading because of one noisy FIFO sample.
+  if (consecutiveNoFingerSamples >= FINGER_OFF_SAMPLES) {
+    if (fingerPresent) clearPpgMeasurements();
+    fingerPresent = false;
+  }
+}
+
 void readPpg() {
   if (!maxReady) return;
-  max3010x.check();
+  // safeCheck waits briefly for a fresh FIFO record.  The sensor library's
+  // getFIFO* methods then read the record at the FIFO tail; getIR()/getRed()
+  // fetch the latest record instead and can duplicate/drop samples here.
+  if (!max3010x.safeCheck(8)) return;
   while (max3010x.available()) {
-    const long ir = max3010x.getIR();
-    const long red = max3010x.getRed();
-    fingerPresent = ir > MIN_IR_FOR_FINGER;
+    const uint32_t ir = max3010x.getFIFOIR();
+    const uint32_t red = max3010x.getFIFORed();
+    lastIr = ir;
+    lastRed = red;
+    updateFingerPresence(ir);
     if (!fingerPresent) {
-      clearPpgMeasurements();
       max3010x.nextSample();
       continue;
     }
@@ -188,6 +219,16 @@ void readPpg() {
     }
     max3010x.nextSample();
   }
+
+  // This compact diagnostic makes a wiring/contact problem visible without
+  // exposing device credentials. It is useful only in the Arduino Serial
+  // Monitor and is deliberately rate-limited.
+  if (millis() - lastPpgDiagnosticAt >= 2000) {
+    lastPpgDiagnosticAt = millis();
+    Serial.printf("PPG ir=%lu red=%lu contact=%s samples=%u bpm=%.1f spo2=%.1f\n",
+                  lastIr, lastRed, fingerPresent ? "yes" : "no",
+                  spo2SampleCount, bpm, spo2);
+  }
 }
 
 void updateDisplay() {
@@ -198,15 +239,19 @@ void updateDisplay() {
   display.setTextSize(1);
   display.setCursor(0, 0);
   display.print("MaatriWatch");
-  display.setCursor(0, 14);
+  display.setCursor(0, 10);
   display.print(WiFi.status() == WL_CONNECTED ? "Wi-Fi: connected" : "Wi-Fi: reconnecting");
-  display.setCursor(0, 28);
+  display.setCursor(0, 22);
   display.print("Pulse: ");
-  if (fingerPresent && !isnan(bpm)) display.printf("%.0f bpm", bpm); else display.print("place finger");
-  display.setCursor(0, 42);
+  if (fingerPresent && !isnan(bpm)) display.printf("%.0f bpm", bpm); else display.print("touch sensor");
+  display.setCursor(0, 33);
   display.print("SpO2: ");
-  if (spo2MeasurementValid && !isnan(spo2)) display.printf("%.0f%%", spo2); else display.print("stabilizing");
-  display.setCursor(0, 52);
+  if (spo2MeasurementValid && !isnan(spo2)) display.printf("%.0f%%", spo2); else if (fingerPresent) display.print("measuring"); else display.print("awaiting contact");
+  display.setCursor(0, 44);
+  // MAX30102 alone cannot provide a safe BP number. Keeping this explicit
+  // prevents an experimental signal from being confused with a cuff reading.
+  display.print("BP: cuff required");
+  display.setCursor(0, 55);
   display.print("Air: ");
   if (!isnan(airTemperature)) display.printf("%.0fC  %.0f%%", airTemperature, humidity); else display.print("DHT unavailable");
   display.display();
