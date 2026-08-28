@@ -17,6 +17,7 @@
 #include <Adafruit_SSD1306.h>
 #include <ArduinoJson.h>
 #include <DHT.h>
+#include <esp_system.h>
 #include <HTTPClient.h>
 #include <MAX30105.h>
 #include <WiFi.h>
@@ -70,6 +71,7 @@ uint32_t lastPulseSignalAt = 0;
 uint32_t lastValidHeartRateAt = 0;
 uint32_t lastValidSpo2At = 0;
 uint32_t sequence = 0;
+uint32_t bootSessionId = 0;
 bool fingerPresent = false;
 bool spo2MeasurementValid = false;
 bool sosSentForPress = false;
@@ -98,8 +100,12 @@ String isoTimestamp() {
 }
 
 String eventId() {
-  char id[64];
-  snprintf(id, sizeof(id), "esp32-%llx-%lu", ESP.getEfuseMac(), ++sequence);
+  // The event ID must stay unique across ESP32 restarts. `sequence` alone
+  // resets after a flash/reboot and previously caused the API to reject fresh
+  // telemetry as a retry of an old event (HTTP 409).
+  char id[80];
+  snprintf(id, sizeof(id), "esp32-%llx-%08lx-%lu", ESP.getEfuseMac(),
+           static_cast<unsigned long>(bootSessionId), static_cast<unsigned long>(++sequence));
   return String(id);
 }
 
@@ -394,6 +400,8 @@ void handleSosButton() {
 
 void setup() {
   Serial.begin(115200);
+  bootSessionId = esp_random();
+  if (bootSessionId == 0) bootSessionId = static_cast<uint32_t>(ESP.getEfuseMac()) ^ micros();
   pinMode(PIN_SOS, INPUT_PULLUP);
   Wire.begin(I2C_SDA, I2C_SCL);
   dht.begin();
@@ -408,8 +416,11 @@ void setup() {
     // The 25 SPS rate is intentional: the Maxim algorithm receives exactly
     // four seconds of PPG per 100-sample evaluation window.
     max3010x.setup(80, 4, 2, 25, 411, 4096);
-    max3010x.setPulseAmplitudeRed(0x3F);
-    max3010x.setPulseAmplitudeIR(0x3F);
+    // Raw counts around 220k were close to the MAX30102's 18-bit ceiling and
+    // produced implausibly high pulse estimates. This lower drive current
+    // keeps a fingertip signal in the usable range without losing contact.
+    max3010x.setPulseAmplitudeRed(0x1F);
+    max3010x.setPulseAmplitudeIR(0x1F);
     max3010x.setPulseAmplitudeGreen(0);
   }
 
