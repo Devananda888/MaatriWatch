@@ -23,6 +23,7 @@
 #include <WiFiClientSecure.h>
 #include <WiFiManager.h>
 #include <Wire.h>
+#include "heartRate.h"
 #include "spo2_algorithm.h"
 
 #include "secrets.h"
@@ -42,6 +43,7 @@ constexpr uint8_t FINGER_ON_SAMPLES = 3;
 constexpr uint8_t FINGER_OFF_SAMPLES = 25;
 constexpr uint8_t SPO2_BUFFER_SIZE = 100;  // Four seconds at 25 samples/second.
 constexpr uint32_t HEART_RATE_STALE_MS = 12000;
+constexpr uint32_t PULSE_LOSS_TIMEOUT_MS = 3500;
 constexpr uint32_t SPO2_STALE_MS = 45000;
 constexpr uint32_t DHT_INTERVAL_MS = 2200;
 constexpr uint32_t DHT_STALE_MS = 60000;
@@ -63,6 +65,8 @@ uint32_t lastDhtAt = 0;
 uint32_t lastDhtValidAt = 0;
 uint32_t lastPpgDiagnosticAt = 0;
 uint32_t sosPressedAt = 0;
+uint32_t lastBeatAt = 0;
+uint32_t lastPulseSignalAt = 0;
 uint32_t lastValidHeartRateAt = 0;
 uint32_t lastValidSpo2At = 0;
 uint32_t sequence = 0;
@@ -75,6 +79,8 @@ uint8_t consecutiveNoFingerSamples = 0;
 uint32_t lastIr = 0;
 uint32_t lastRed = 0;
 float ppgPerfusionIndex = NAN;
+float pendingBpm = NAN;
+uint8_t consistentBeatIntervals = 0;
 uint8_t dhtReadFailures = 0;
 
 bool isHeartRateFresh();
@@ -161,13 +167,19 @@ void clearPpgMeasurements() {
   spo2 = NAN;
   spo2MeasurementValid = false;
   spo2SampleCount = 0;
+  lastBeatAt = 0;
+  lastPulseSignalAt = 0;
   lastValidHeartRateAt = 0;
   lastValidSpo2At = 0;
   ppgPerfusionIndex = NAN;
+  pendingBpm = NAN;
+  consistentBeatIntervals = 0;
 }
 
 bool isHeartRateFresh() {
-  return lastValidHeartRateAt != 0 && millis() - lastValidHeartRateAt <= HEART_RATE_STALE_MS;
+  return lastValidHeartRateAt != 0 && lastPulseSignalAt != 0 &&
+         millis() - lastValidHeartRateAt <= HEART_RATE_STALE_MS &&
+         millis() - lastPulseSignalAt <= PULSE_LOSS_TIMEOUT_MS;
 }
 
 bool isSpo2Fresh() {
@@ -185,6 +197,20 @@ void acceptHeartRate(float candidate) {
   // smoothed just enough to avoid a distracting flicker on the watch face.
   bpm = isnan(bpm) ? candidate : 0.65f * bpm + 0.35f * candidate;
   lastValidHeartRateAt = millis();
+}
+
+void processBeatCandidate(float candidate) {
+  if (candidate < 35 || candidate > 220) return;
+  // A single optical spike can resemble a beat. Require two similarly timed
+  // intervals before the value is allowed onto the OLED or dashboard.
+  if (isnan(pendingBpm) || fabsf(candidate - pendingBpm) > 18.0f) {
+    pendingBpm = candidate;
+    consistentBeatIntervals = 1;
+    return;
+  }
+  pendingBpm = 0.65f * pendingBpm + 0.35f * candidate;
+  if (consistentBeatIntervals < 255) consistentBeatIntervals++;
+  if (consistentBeatIntervals >= 2) acceptHeartRate(pendingBpm);
 }
 
 void updateFingerPresence(uint32_t ir) {
@@ -221,6 +247,19 @@ void readPpg() {
       max3010x.nextSample();
       continue;
     }
+    // The SparkFun detector uses 16-bit signal maths while MAX30102 emits
+    // 18-bit samples. Scaling prevents overflow without losing the pulse.
+    if (checkForBeat(static_cast<int32_t>(ir >> 3))) {
+      const uint32_t now = millis();
+      if (lastBeatAt != 0) {
+        const float candidate = 60.0f / ((now - lastBeatAt) / 1000.0f);
+        if (candidate >= 35 && candidate <= 220) {
+          processBeatCandidate(candidate);
+          if (consistentBeatIntervals >= 2) lastPulseSignalAt = now;
+        }
+      }
+      lastBeatAt = now;
+    }
     irBuffer[spo2SampleCount] = static_cast<uint32_t>(ir);
     redBuffer[spo2SampleCount] = static_cast<uint32_t>(red);
     spo2SampleCount++;
@@ -246,10 +285,11 @@ void readPpg() {
       const float meanIr = static_cast<float>(irTotal) / SPO2_BUFFER_SIZE;
       ppgPerfusionIndex = meanIr > 0 ? (maxIr - minIr) * 100.0f / meanIr : NAN;
       const bool hasPulseWave = !isnan(ppgPerfusionIndex) && ppgPerfusionIndex >= 0.15f;
-      // Do not accept a quick edge/noise spike as pulse. The reference
-      // algorithm must identify a physiologic-looking waveform in the full
-      // four-second window before the OLED or API sees a heart-rate value.
-      if (validHeartRate && hasPulseWave) acceptHeartRate(static_cast<float>(calculatedHeartRate));
+      // The four-second reference result also refreshes a confirmed pulse.
+      if (validHeartRate && hasPulseWave) {
+        lastPulseSignalAt = millis();
+        acceptHeartRate(static_cast<float>(calculatedHeartRate));
+      }
       const bool validWindow = validSpo2 && hasPulseWave && calculatedSpo2 >= 70 && calculatedSpo2 <= 100;
       if (validWindow) {
         const float candidate = static_cast<float>(calculatedSpo2);
@@ -270,9 +310,10 @@ void readPpg() {
   // Monitor and is deliberately rate-limited.
   if (millis() - lastPpgDiagnosticAt >= 2000) {
     lastPpgDiagnosticAt = millis();
-    Serial.printf("PPG ir=%lu red=%lu contact=%s samples=%u bpm=%.1f hrFresh=%s spo2=%.1f pi=%.2f dhtFailures=%u\n",
+    Serial.printf("PPG ir=%lu red=%lu contact=%s samples=%u bpm=%.1f hrFresh=%s beats=%u spo2=%.1f pi=%.2f dhtFailures=%u\n",
                   lastIr, lastRed, fingerPresent ? "yes" : "no",
-                  spo2SampleCount, bpm, isHeartRateFresh() ? "yes" : "no", spo2, ppgPerfusionIndex, dhtReadFailures);
+                  spo2SampleCount, bpm, isHeartRateFresh() ? "yes" : "no", consistentBeatIntervals,
+                  spo2, ppgPerfusionIndex, dhtReadFailures);
   }
 }
 
