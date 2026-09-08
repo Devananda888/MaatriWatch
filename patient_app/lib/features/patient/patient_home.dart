@@ -5,21 +5,23 @@ import '../../core/patient_api.dart';
 
 /// Patient-facing safety companion. It routes concerns to care teams; it does not diagnose.
 class PatientHome extends StatefulWidget {
-  const PatientHome({super.key, this.api, this.onSignOut});
+  const PatientHome({super.key, this.api, this.onSignOut, this.onAccessDenied});
   final PatientApi? api;
   final Future<void> Function()? onSignOut;
+  final Future<void> Function()? onAccessDenied;
   @override
   State<PatientHome> createState() => _PatientHomeState();
 }
 
 class _PatientHomeState extends State<PatientHome> {
-  final _fallbackApi = PatientApi();
+  PatientApi? _fallbackApi;
   Map<String, dynamic> _data = const {};
   Map<String, bool> _consents = {};
   int _page = 0;
   bool _busy = false;
   String? _offline;
-  PatientApi get _api => widget.api ?? _fallbackApi;
+  String? _accessDenied;
+  PatientApi get _api => widget.api ?? (_fallbackApi ??= PatientApi());
 
   @override
   void initState() {
@@ -31,6 +33,7 @@ class _PatientHomeState extends State<PatientHome> {
     setState(() {
       _busy = true;
       _offline = null;
+      _accessDenied = null;
     });
     try {
       final values = await Future.wait([_api.home(), _api.consents()]);
@@ -44,6 +47,15 @@ class _PatientHomeState extends State<PatientHome> {
           };
         });
       }
+    } on PatientApiException catch (error) {
+      if (mounted) {
+        if (error.statusCode == 401 || error.statusCode == 403) {
+          setState(() => _accessDenied = error.message);
+        } else {
+          setState(() => _offline =
+              'Live data is unavailable. Check your connection before relying on this screen.');
+        }
+      }
     } catch (_) {
       if (mounted) {
         setState(() => _offline =
@@ -54,7 +66,14 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    if (_accessDenied != null) {
+      return _AccountAccessDenied(
+        message: _accessDenied!,
+        onSignOut: widget.onAccessDenied ?? widget.onSignOut,
+      );
+    }
+    return Scaffold(
         body: SafeArea(
             child: RefreshIndicator(
                 onRefresh: _load,
@@ -83,11 +102,13 @@ class _PatientHomeState extends State<PatientHome> {
                   label: 'Profile'),
             ]),
       );
+  }
 
   Widget _home() {
     final patient = _map(_data['patient']);
     final vital = _map(_data['latest_vital']);
     final device = _map(_data['device']);
+    final deviceHealth = _map(_data['device_health']);
     return ListView(padding: const EdgeInsets.all(20), children: [
       Row(children: [
         Expanded(
@@ -132,14 +153,16 @@ class _PatientHomeState extends State<PatientHome> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                       Text(
-                          device.isEmpty
-                              ? 'Wearable not connected'
-                              : 'Wearable connected',
+                          deviceHealth['title'] as String? ??
+                              (device.isEmpty
+                                  ? 'Wearable not connected'
+                                  : 'Wearable connected'),
                           style: Theme.of(context).textTheme.titleMedium),
                       Text(
-                          vital.isEmpty
-                              ? 'Waiting for a reading'
-                              : 'Latest reading received',
+                          deviceHealth['message'] as String? ??
+                              (vital.isEmpty
+                                  ? 'Waiting for a reading'
+                                  : _readingContext(vital, 'wearable')),
                           style: Theme.of(context).textTheme.bodySmall)
                     ])),
                 if (vital['battery_percent'] != null)
@@ -150,20 +173,25 @@ class _PatientHomeState extends State<PatientHome> {
       Text('Latest readings', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 10),
       Wrap(spacing: 10, runSpacing: 10, children: [
-        _Vital('Wearable heart rate', _reading(vital, 'heart_rate_bpm', 'bpm'),
+        _Vital('PPG-derived heart rate',
+            _reading(vital, 'heart_rate_bpm', 'bpm'),
+            _readingContext(vital, _source(vital['heart_rate_source'])),
             Icons.favorite_outline, const Color(0xffC9546C)),
-        _Vital('Wearable oxygen (SpO₂)', _reading(vital, 'spo2_percent', '%'),
+        _Vital('PPG-derived SpO₂', _reading(vital, 'spo2_percent', '%'),
+            _readingContext(vital, _source(vital['spo2_source'])),
             Icons.air_rounded, const Color(0xff317D9D)),
         _Vital(
-            'Skin-adjacent temperature',
+            'Device / skin-adjacent temperature',
             _reading(vital, 'skin_adjacent_temperature_c', '°C'),
+            _readingContext(vital, _source(vital['temperature_source'])),
             Icons.thermostat_outlined,
             const Color(0xffD8863F)),
         _Vital(
-            'Blood pressure (validated cuff)',
-            vital['blood_pressure_source'] == 'validated_cuff' && _fresh(vital)
+            'Blood pressure (validated source)',
+            _hasValidatedBloodPressure(vital) && _fresh(vital)
                 ? '${vital['systolic_bp']}/${vital['diastolic_bp']} mmHg'
                 : 'Not currently available',
+            _readingContext(vital, _source(vital['blood_pressure_source'])),
             Icons.monitor_heart_outlined,
             const Color(0xff7062A6))
       ]),
@@ -418,6 +446,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   bool _fresh(Map<String, dynamic> vital) {
+    if (vital['is_fresh'] is bool) return vital['is_fresh'] as bool;
     if (vital['measurement_quality'] == 'unavailable' ||
         vital['contact_detected'] == false) {
       return false;
@@ -427,6 +456,40 @@ class _PatientHomeState extends State<PatientHome> {
     return captured != null &&
         DateTime.now().toUtc().difference(captured) <=
             const Duration(minutes: 10);
+  }
+
+  bool _hasValidatedBloodPressure(Map<String, dynamic> vital) {
+    const sources = {
+      'validated_cuff',
+      'clinician_entered'
+    };
+    return sources.contains(vital['blood_pressure_source']) &&
+        vital['systolic_bp'] is num &&
+        vital['diastolic_bp'] is num;
+  }
+
+  String _source(Object? raw) => switch (raw) {
+        'wearable_ppg' => 'MAX30102 PPG',
+        'wearable_skin_adjacent' => 'TMP117 device / skin-adjacent',
+        'validated_cuff' => 'Validated cuff',
+        'external_validated_device' => 'Validated external device',
+        'clinician_entered' => 'Clinician-entered',
+        _ => 'Source unavailable',
+      };
+
+  String _readingContext(Map<String, dynamic> vital, String source) {
+    final raw = vital['observed_at'] ?? vital['captured_at'];
+    final observed = raw is String ? DateTime.tryParse(raw)?.toLocal() : null;
+    final time = observed == null
+        ? 'observation time unavailable'
+        : 'observed ${observed.hour.toString().padLeft(2, '0')}:${observed.minute.toString().padLeft(2, '0')}';
+    final freshness = switch (vital['freshness']) {
+      'current' => 'current',
+      'stale' => 'stale',
+      'unavailable' => 'unavailable',
+      _ => _fresh(vital) ? 'current' : 'unavailable',
+    };
+    return '$source • $time • $freshness';
   }
 
   String _days(Object? date) {
@@ -465,8 +528,8 @@ class _Safety extends StatelessWidget {
 }
 
 class _Vital extends StatelessWidget {
-  const _Vital(this.label, this.value, this.icon, this.color);
-  final String label, value;
+  const _Vital(this.label, this.value, this.context, this.icon, this.color);
+  final String label, value, context;
   final IconData icon;
   final Color color;
   @override
@@ -481,8 +544,54 @@ class _Vital extends StatelessWidget {
                     Icon(icon, color: color),
                     const SizedBox(height: 10),
                     Text(value, style: Theme.of(context).textTheme.titleLarge),
-                    Text(label, style: Theme.of(context).textTheme.bodySmall)
+                    Text(label, style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 3),
+                    Text(this.context,
+                        style: Theme.of(context).textTheme.labelSmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis)
                   ]))));
+}
+
+class _AccountAccessDenied extends StatelessWidget {
+  const _AccountAccessDenied({required this.message, this.onSignOut});
+  final String message;
+  final Future<void> Function()? onSignOut;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.lock_person_outlined, size: 48),
+                  const SizedBox(height: 16),
+                  Text('Account access needed',
+                      style: Theme.of(context).textTheme.headlineSmall),
+                  const SizedBox(height: 8),
+                  Text(message, textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Please contact your hospital care team. Do not rely on this app until access is restored.',
+                    textAlign: TextAlign.center,
+                  ),
+                  if (onSignOut != null) ...[
+                    const SizedBox(height: 20),
+                    OutlinedButton.icon(
+                      onPressed: () => onSignOut!(),
+                      icon: const Icon(Icons.logout_outlined),
+                      label: const Text('Sign out'),
+                    )
+                  ]
+                ]),
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 class _Notice extends StatelessWidget {

@@ -10,7 +10,7 @@ class PatientAuthGate extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => StreamBuilder<User?>(
-        stream: auth.authStateChanges(),
+        stream: auth.userChanges(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const _ProgressScreen();
@@ -22,7 +22,7 @@ class PatientAuthGate extends StatelessWidget {
           if (!user.emailVerified) {
             return _EmailVerificationPage(auth: auth, user: user);
           }
-          return PatientHome(onSignOut: auth.signOut);
+          return PatientHome(onSignOut: auth.signOut, onAccessDenied: auth.signOut);
         },
       );
 }

@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from flask import Blueprint, abort, g, jsonify, request
+from flask import Blueprint, abort, current_app, g, jsonify, request
 
 from .auth import require_firebase_user
 from .db import get_db
+from .device_health import device_health
 from .measurements import public_vital
 
 patient_bp = Blueprint("patient", __name__)
@@ -26,6 +27,8 @@ def _row(row):
 
 
 def _patient_for_actor(cursor):
+    if not g.firebase_claims.get("demo") and g.firebase_claims.get("email_verified") is not True:
+        abort(403, description="Verify the email address for this patient account before accessing care information")
     cursor.execute(
         """SELECT p.*, h.name AS hospital_name FROM patients p JOIN hospitals h ON h.id = p.hospital_id
            WHERE p.user_id = %s AND p.is_active = true""",
@@ -37,14 +40,32 @@ def _patient_for_actor(cursor):
     return patient
 
 
+def _mark_invitation_activated(cursor, patient) -> None:
+    """Record successful verified access without persisting reset-link secrets."""
+    cursor.execute(
+        """UPDATE patient_invitations
+              SET status = 'expired'
+            WHERE patient_id = %s AND status = 'issued' AND expires_at < now()""",
+        (patient["id"],),
+    )
+    cursor.execute(
+        """UPDATE patient_invitations
+              SET status = 'activated', activated_at = COALESCE(activated_at, now())
+            WHERE patient_id = %s AND status = 'issued' AND expires_at >= now()""",
+        (patient["id"],),
+    )
+
+
 @patient_bp.get("/patient/home")
 @require_firebase_user
 def home():
     connection = get_db()
     with connection.cursor() as cursor:
         patient = _patient_for_actor(cursor)
+        _mark_invitation_activated(cursor, patient)
         cursor.execute(
             """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent,
+                      heart_rate_source, spo2_source,
                       temperature_c, temperature_source, systolic_bp, diastolic_bp,
                       blood_pressure_source, battery_percent, contact_detected,
                       signal_quality, sensor_status
@@ -62,9 +83,12 @@ def home():
         cursor.execute("""SELECT id, title, detail, due_at, status FROM care_plan_tasks
                           WHERE patient_id = %s AND status = 'open' ORDER BY due_at NULLS LAST, created_at DESC LIMIT 6""", (patient["id"],))
         tasks = cursor.fetchall()
-        cursor.execute("""SELECT serial_number, firmware_version, last_seen_at, status FROM devices
+        cursor.execute("""SELECT serial_number, firmware_version, last_seen_at, status, last_observed_at,
+                                 last_battery_percent, last_sensor_status, last_contact_detected, last_signal_quality
+                          FROM devices
                           WHERE assigned_patient_id = %s AND status = 'assigned' ORDER BY last_seen_at DESC NULLS LAST LIMIT 1""", (patient["id"],))
         device = cursor.fetchone()
+    connection.commit()
     return jsonify(
         {
             "patient": _row(patient),
@@ -72,6 +96,10 @@ def home():
             "active_alerts": [_row(x) for x in alerts],
             "care_plan": [_row(x) for x in tasks],
             "device": _row(device),
+            "device_health": device_health(
+                device,
+                offline_after_minutes=current_app.config["DEVICE_OFFLINE_AFTER_MINUTES"],
+            ),
             "danger_signs": _DANGER_SIGNS,
         }
     )

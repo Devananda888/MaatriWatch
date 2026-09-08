@@ -56,7 +56,7 @@ _EVENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _SENSOR_STATUSES = {"ok", "contact_lost", "sensor_error", "unavailable", "unknown"}
 _HEART_AND_SPO2_SOURCES = {"wearable_ppg", "external_validated_device", "clinician_entered"}
 _TEMPERATURE_SOURCES = {"wearable_skin_adjacent", "external_validated_device", "clinician_entered"}
-_BLOOD_PRESSURE_SOURCES = {"validated_cuff", "external_validated_device", "clinician_entered"}
+_BLOOD_PRESSURE_SOURCES = {"validated_cuff", "clinician_entered"}
 
 
 def _parse_timestamp(value):
@@ -465,7 +465,24 @@ def ingest_vitals():
             if not existing:
                 abort(409, description="event_id conflict could not be resolved")
             return _duplicate_response(connection, cursor, existing, payload)
-        cursor.execute("UPDATE devices SET last_seen_at = now(), updated_at = now() WHERE id = %s", (device["id"],))
+        # Device state is operational metadata only. It is deliberately kept
+        # separate from the clinical alert engine below.
+        cursor.execute(
+            """UPDATE devices
+                  SET last_seen_at = now(), last_observed_at = %s,
+                      last_battery_percent = %s, last_sensor_status = %s,
+                      last_contact_detected = %s, last_signal_quality = %s,
+                      updated_at = now()
+                WHERE id = %s""",
+            (
+                payload["observed_at"],
+                payload["battery_percent"],
+                payload["sensor_status"],
+                payload["contact_detected"],
+                payload["signal_quality"],
+                device["id"],
+            ),
+        )
 
         alerts = []
         for candidate in evaluate_alerts(payload):

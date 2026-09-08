@@ -9,10 +9,10 @@ enum VitalMetric { heartRate, spo2, temperature, systolic }
 
 extension VitalMetricLabel on VitalMetric {
   String get label => switch (this) {
-        VitalMetric.heartRate => 'Heart rate',
-        VitalMetric.spo2 => 'SpO₂',
-        VitalMetric.temperature => 'Ambient temp',
-        VitalMetric.systolic => 'Blood pressure',
+        VitalMetric.heartRate => 'PPG heart rate',
+        VitalMetric.spo2 => 'PPG SpO₂',
+        VitalMetric.temperature => 'Environmental temp',
+        VitalMetric.systolic => 'Validated BP',
       };
 
   String get unit => switch (this) {
@@ -27,7 +27,6 @@ extension VitalMetricLabel on VitalMetric {
         VitalMetric.spo2 => item.spo2,
         VitalMetric.temperature => item.ambientTemperature,
         VitalMetric.systolic => item.bloodPressureSource == 'validated_cuff' ||
-                item.bloodPressureSource == 'external_validated_device' ||
                 item.bloodPressureSource == 'clinician_entered'
             ? item.systolic
             : null,

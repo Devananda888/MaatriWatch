@@ -45,7 +45,10 @@ non-production database.
    JSON in the deployment secret `FIREBASE_SERVICE_ACCOUNT_JSON` as one JSON
    string—never commit the file.
 5. Set `FIREBASE_PROJECT_ID` and `FIREBASE_DATABASE_URL`.
-6. Deploy the database rules in `backend/firebase/database.rules.json` after
+6. Register the HTTPS patient activation page in Firebase Authentication's
+   authorised domains, then set that exact page as `FIREBASE_AUTH_ACTION_URL`.
+   This URL receives Firebase's one-time password-reset/activation action.
+7. Deploy the database rules in `backend/firebase/database.rules.json` after
    reviewing them for the production project. On a clinician's successful
    dashboard sign-in, the server refreshes that clinician's minimal RTDB
    read-entitlement projection from their Postgres membership. Server code
@@ -61,10 +64,14 @@ non-production database.
 | `FIREBASE_PROJECT_ID` | Firebase project ID. |
 | `FIREBASE_DATABASE_URL` | Exact RTDB URL. |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Complete service-account JSON, stored as a platform secret. |
+| `FIREBASE_AUTH_ACTION_URL` | Exact HTTPS patient activation page registered with Firebase Auth. |
 | `CORS_ALLOWED_ORIGINS` | Comma-separated exact HTTPS origins for the dashboard and patient web app; never `*`. |
 | `DEMO_MODE` | `false` in every non-demo environment. |
 | `DEMO_IN_MEMORY` | `false` in every non-demo environment. |
 | `REALTIME_OUTBOX_POLL_SECONDS` | `5` is a reasonable initial value. |
+| `REALTIME_OUTBOX_BATCH_SIZE` | Positive outbox batch size. |
+| `MAX_CONTENT_LENGTH` | Positive request-size limit in bytes. |
+| `DEVICE_OFFLINE_AFTER_MINUTES` | Positive device-health stale threshold; it never creates a clinical alert. |
 
 Do not send these values in chat or commit `.env`/service-account files. Share
 them through the deployment platform's secret manager or an approved password
@@ -87,15 +94,34 @@ environment variables:
 
 Run `scripts/apply_migrations.py` once as a controlled release job before the
 first web deployment and before deploying any migration that changes schema.
+This release adds `007_activation_and_device_health.sql`.
 
-## 6. Bootstrap real accounts
+## 6. Bootstrap real accounts and invite patients
 
 Firebase Auth proves identity, but the application database decides hospital
-access. A hospital administrator must provision a matching `app_users` row and
-an active `hospital_memberships` row for each Firebase UID. Create a patient
-row with `patients.user_id` set to the matching patient application user. Do
-this with an audited admin tool or a reviewed SQL runbook; do not let browsers
-choose their own hospital, role, or patient ID.
+access. A hospital administrator must provision clinician accounts with active
+`clinician` memberships. Do not let browsers choose their own hospital, role,
+or patient ID. A clinician or hospital administrator can then create a patient
+through the authenticated endpoint:
+
+```text
+POST /api/v1/hospitals/{hospitalId}/patient-invitations
+```
+
+The body contains `medical_record_number`, `full_name`, and `email` (plus
+optional demographic/contact fields). The API creates or verifies the Firebase
+account, links the active Postgres patient record, writes an audit event, and
+returns a one-time Firebase activation URL only in that response. It never
+stores, logs, or projects that URL. Send it to the patient only through an
+approved channel. A clinician can request a replacement at:
+
+```text
+POST /api/v1/hospitals/{hospitalId}/patients/{patientId}/activation-link
+```
+
+The patient must set a password and verify the email address before the mobile
+app can access any care information. Unlinked, inactive, disabled, or
+unverified accounts fail closed.
 
 Before issuing a watch, the hospital administrator must:
 
@@ -113,7 +139,7 @@ Build the dashboard with its API and Firebase public web configuration:
 
 ```text
 flutter build web \
-  --dart-define=API_BASE_URL=https://api.example.com/api/v1 \
+  --dart-define=API_BASE_URL=https://api.production-domain.tld/api/v1 \
   --dart-define=FIREBASE_API_KEY=... \
   --dart-define=FIREBASE_APP_ID=... \
   --dart-define=FIREBASE_MESSAGING_SENDER_ID=... \

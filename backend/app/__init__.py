@@ -16,6 +16,7 @@ from .firebase import init_firebase
 from .ingestion import ingestion_bp
 from .patient import patient_bp
 from .devices import devices_bp
+from .provisioning import provisioning_bp
 from .outbox import deliver_pending_outbox
 
 
@@ -25,7 +26,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     if test_config:
         app.config.update(test_config)
     if app.config.get("IS_PRODUCTION"):
-        errors = Config.production_configuration_errors()
+        errors = Config.production_configuration_errors(app.config)
         if errors:
             raise RuntimeError("Production configuration is incomplete: " + ", ".join(errors))
 
@@ -37,6 +38,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(ingestion_bp, url_prefix="/api/v1")
     app.register_blueprint(patient_bp, url_prefix="/api/v1")
     app.register_blueprint(devices_bp, url_prefix="/api/v1")
+    app.register_blueprint(provisioning_bp, url_prefix="/api/v1")
 
     @app.after_request
     def protect_api_responses(response):

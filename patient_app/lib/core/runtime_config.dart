@@ -18,13 +18,33 @@ abstract final class PatientRuntimeConfig {
     if (endpoint == null || !endpoint.hasScheme || endpoint.host.isEmpty) {
       return 'This app has an invalid service address. Please contact your care team.';
     }
-    if (kReleaseMode && endpoint.scheme != 'https') {
+    if (kReleaseMode &&
+        (endpoint.scheme != 'https' ||
+            _isLocalOrPlaceholder(endpoint.host) ||
+            _isPlaceholder(value))) {
       return 'This release requires a secure service connection.';
     }
     if (kReleaseMode && demoMode) {
       return 'Demo mode is not available in the patient release.';
     }
     return null;
+  }
+
+  static bool _isLocalOrPlaceholder(String host) {
+    final normalised = host.trim().toLowerCase();
+    return normalised == 'localhost' ||
+        normalised == '127.0.0.1' ||
+        normalised == '::1' ||
+        normalised.contains('example') ||
+        normalised.contains('placeholder');
+  }
+
+  static bool _isPlaceholder(String value) {
+    final normalised = value.toLowerCase();
+    return normalised.contains('change-me') ||
+        normalised.contains('your-') ||
+        normalised.contains('[your') ||
+        normalised.contains('<your');
   }
 
   static Uri get apiUri {

@@ -89,7 +89,6 @@ def _evaluate_sos(reading: Mapping[str, Any]) -> list[AlertCandidate]:
 def _evaluate_postpartum_hypertension(reading: Mapping[str, Any]) -> list[AlertCandidate]:
     if reading.get("blood_pressure_source") not in {
         "validated_cuff",
-        "external_validated_device",
         "clinician_entered",
     }:
         return []
@@ -144,7 +143,7 @@ def _evaluate_postpartum_hemorrhage(reading: Mapping[str, Any]) -> list[AlertCan
     systolic = (
         reading.get("systolic_bp")
         if reading.get("blood_pressure_source")
-        in {"validated_cuff", "external_validated_device", "clinician_entered"}
+        in {"validated_cuff", "clinician_entered"}
         else None
     )
     shock_index = heart_rate / systolic if heart_rate is not None and systolic not in (None, 0) else None

@@ -30,6 +30,8 @@ class HospitalMembership {
 class VitalReading {
   const VitalReading({
     required this.capturedAt,
+    this.observedAt,
+    this.receivedAt,
     this.heartRate,
     this.spo2,
     this.skinAdjacentTemperature,
@@ -41,11 +43,17 @@ class VitalReading {
     this.bloodLoss,
     this.sampleCount,
     this.bloodPressureSource,
+    this.heartRateSource,
+    this.spo2Source,
+    this.temperatureSource,
     this.contactDetected,
     this.measurementQuality,
+    this.freshness,
   });
 
   final DateTime? capturedAt;
+  final DateTime? observedAt;
+  final DateTime? receivedAt;
   final double? heartRate;
   final double? spo2;
 
@@ -61,11 +69,17 @@ class VitalReading {
   final double? bloodLoss;
   final int? sampleCount;
   final String? bloodPressureSource;
+  final String? heartRateSource;
+  final String? spo2Source;
+  final String? temperatureSource;
   final bool? contactDetected;
   final String? measurementQuality;
+  final String? freshness;
 
   factory VitalReading.fromJson(Map<String, dynamic> json) => VitalReading(
         capturedAt: asDateTime(json['captured_at']),
+        observedAt: asDateTime(json['observed_at']) ?? asDateTime(json['captured_at']),
+        receivedAt: asDateTime(json['received_at']),
         heartRate: asDouble(json['heart_rate_bpm']),
         spo2: asDouble(json['spo2_percent']),
         skinAdjacentTemperature: asDouble(json['skin_adjacent_temperature_c']),
@@ -78,10 +92,30 @@ class VitalReading {
         sampleCount:
             json['sample_count'] is num ? asInt(json['sample_count']) : null,
         bloodPressureSource: json['blood_pressure_source'] as String?,
+        heartRateSource: json['heart_rate_source'] as String?,
+        spo2Source: json['spo2_source'] as String?,
+        temperatureSource: json['temperature_source'] as String?,
         contactDetected: json['contact_detected'] as bool?,
         measurementQuality: json['measurement_quality'] as String?,
+        freshness: json['freshness'] as String?,
       );
+
+  String get observationStatus => switch (freshness) {
+        'current' => 'current',
+        'stale' => 'stale',
+        'unavailable' => 'unavailable',
+        _ => measurementQuality == 'unavailable' ? 'unavailable' : 'status unknown',
+      };
 }
+
+String measurementSourceLabel(String? source) => switch (source) {
+      'wearable_ppg' => 'MAX30102 PPG',
+      'wearable_skin_adjacent' => 'TMP117 device / skin-adjacent',
+      'validated_cuff' => 'Validated cuff',
+      'external_validated_device' => 'Validated external device',
+      'clinician_entered' => 'Clinician-entered',
+      _ => 'Source unavailable',
+    };
 
 class PatientSummary {
   const PatientSummary({

@@ -44,7 +44,7 @@ class ApiClient {
   Future<List<VitalReading>> vitals(
     String hospitalId,
     String patientId, {
-    String resolution = '5m',
+    String resolution = 'raw',
   }) async {
     final end = DateTime.now().toUtc();
     final start = end.subtract(const Duration(hours: 24));

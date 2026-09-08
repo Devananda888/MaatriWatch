@@ -9,7 +9,8 @@ import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final configurationError = PatientRuntimeConfig.validationError();
+  final configurationError = PatientRuntimeConfig.validationError() ??
+      PatientFirebaseOptions.validationError();
   var firebaseReady =
       configurationError == null && PatientFirebaseOptions.isConfigured;
   String? initializationError = configurationError;

@@ -30,7 +30,7 @@ class PatientApi {
       {Map<String, dynamic>? body}) async {
     final token = await FirebaseAuth.instance.currentUser?.getIdToken();
     if (token == null || token.isEmpty) {
-      throw const PatientApiException('Please sign in again to continue.');
+      throw const PatientApiException('Please sign in again to continue.', 401);
     }
     final response = await _client
         .send(http.Request(method, Uri.parse('$_baseUrl$path'))
@@ -48,22 +48,24 @@ class PatientApi {
           : jsonDecode(response.body);
     } on FormatException {
       throw const PatientApiException(
-          'The care service returned an invalid response. Please try again.');
+          'The care service returned an invalid response. Please try again.', 502);
     }
     final value = decoded is Map
         ? Map<String, dynamic>.from(decoded)
         : <String, dynamic>{};
     if (response.statusCode < 200 || response.statusCode > 299) {
       throw PatientApiException(
-          value['message'] as String? ?? 'We could not complete that request.');
+          value['message'] as String? ?? 'We could not complete that request.',
+          response.statusCode);
     }
     return value;
   }
 }
 
 class PatientApiException implements Exception {
-  const PatientApiException(this.message);
+  const PatientApiException(this.message, this.statusCode);
   final String message;
+  final int statusCode;
   @override
   String toString() => message;
 }

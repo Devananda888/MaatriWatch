@@ -28,7 +28,7 @@ _PATIENT_STATUSES = ("all", "normal", *_SEVERITIES)
 _PATIENT_SORTS = {
     "risk": "COALESCE(active.risk_rank, 0) DESC, active.latest_alert_at DESC NULLS LAST, p.full_name ASC",
     "name": "p.full_name ASC, p.id ASC",
-    "recent": "latest_vital.captured_at DESC NULLS LAST, p.full_name ASC, p.id ASC",
+    "recent": "latest_vital.observed_at DESC NULLS LAST, p.full_name ASC, p.id ASC",
 }
 
 
@@ -216,8 +216,10 @@ def patients(hospital_id: str):
     with connection.cursor() as cursor:
         cursor.execute(
             f"""SELECT p.id, p.medical_record_number, p.full_name, p.preferred_language,
-                       p.delivery_date, latest_vital.captured_at AS latest_captured_at,
+                       p.delivery_date, latest_vital.observed_at AS latest_captured_at,
+                       latest_vital.observed_at AS latest_observed_at, latest_vital.received_at AS latest_received_at,
                        latest_vital.heart_rate_bpm, latest_vital.spo2_percent,
+                       latest_vital.heart_rate_source, latest_vital.spo2_source,
                        latest_vital.temperature_c, latest_vital.temperature_source,
                        latest_vital.ambient_temperature_c,
                        latest_vital.ambient_humidity_percent, latest_vital.systolic_bp,
@@ -230,14 +232,15 @@ def patients(hospital_id: str):
                        active.highest_severity, active.latest_alert_at
                 FROM patients p
                 LEFT JOIN LATERAL (
-                    SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c,
+                    SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent,
+                           heart_rate_source, spo2_source, temperature_c,
                            temperature_source,
                            ambient_temperature_c, ambient_humidity_percent,
                            systolic_bp, diastolic_bp, blood_pressure_source,
                            contact_detected, signal_quality, sensor_status
                     FROM vital_readings
                     WHERE hospital_id = p.hospital_id AND patient_id = p.id
-                    ORDER BY captured_at DESC, id DESC LIMIT 1
+                    ORDER BY observed_at DESC, id DESC LIMIT 1
                 ) latest_vital ON true
                 LEFT JOIN LATERAL (
                     SELECT id, serial_number, last_seen_at
@@ -278,8 +281,12 @@ def patients(hospital_id: str):
                     public_vital(
                         {
                         "captured_at": value["latest_captured_at"],
+                        "observed_at": value["latest_observed_at"],
+                        "received_at": value["latest_received_at"],
                         "heart_rate_bpm": value["heart_rate_bpm"],
                         "spo2_percent": value["spo2_percent"],
+                        "heart_rate_source": value["heart_rate_source"],
+                        "spo2_source": value["spo2_source"],
                         "temperature_c": value["temperature_c"],
                         "temperature_source": value["temperature_source"],
                         "ambient_temperature_c": value["ambient_temperature_c"],
@@ -322,7 +329,8 @@ def patient_detail(hospital_id: str, patient_id: str):
     with connection.cursor() as cursor:
         patient = _patient_or_404(cursor, hospital_uuid, patient_uuid)
         cursor.execute(
-            """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent, temperature_c,
+            """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent,
+                      heart_rate_source, spo2_source, temperature_c,
                       temperature_source, blood_pressure_source, contact_detected,
                       signal_quality, sensor_status,
                       ambient_temperature_c, ambient_humidity_percent,
@@ -330,7 +338,7 @@ def patient_detail(hospital_id: str, patient_id: str):
                       bleeding_reported, motion
                FROM vital_readings
                WHERE hospital_id = %s AND patient_id = %s
-               ORDER BY captured_at DESC, id DESC LIMIT 1""",
+               ORDER BY observed_at DESC, id DESC LIMIT 1""",
             (hospital_uuid, patient_uuid),
         )
         latest_vital = cursor.fetchone()
@@ -403,22 +411,23 @@ def patient_vitals(hospital_id: str, patient_id: str):
         _patient_or_404(cursor, hospital_uuid, patient_uuid)
         if resolution == "raw":
             cursor.execute(
-                """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent, temperature_c,
+                """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent,
+                          heart_rate_source, spo2_source, temperature_c,
                           temperature_source, blood_pressure_source, contact_detected,
                           signal_quality, sensor_status,
                           ambient_temperature_c, ambient_humidity_percent,
                           systolic_bp, diastolic_bp, battery_percent, blood_loss_ml
                    FROM vital_readings
                    WHERE hospital_id = %s AND patient_id = %s
-                     AND captured_at >= %s AND captured_at <= %s
-                   ORDER BY captured_at ASC, id ASC LIMIT %s""",
+                     AND observed_at >= %s AND observed_at <= %s
+                   ORDER BY observed_at ASC, id ASC LIMIT %s""",
                 (hospital_uuid, patient_uuid, start, end, limit),
             )
         else:
             bucket = (
-                "date_trunc('hour', captured_at) + floor(extract(minute FROM captured_at) / 5) * interval '5 minutes'"
+                "date_trunc('hour', observed_at) + floor(extract(minute FROM observed_at) / 5) * interval '5 minutes'"
                 if resolution == "5m"
-                else "date_trunc('hour', captured_at)"
+                else "date_trunc('hour', observed_at)"
             )
             cursor.execute(
                 f"""SELECT {bucket} AS captured_at,
@@ -434,7 +443,7 @@ def patient_vitals(hospital_id: str, patient_id: str):
                            count(*) AS sample_count
                     FROM vital_readings
                     WHERE hospital_id = %s AND patient_id = %s
-                      AND captured_at >= %s AND captured_at <= %s
+                      AND observed_at >= %s AND observed_at <= %s
                     GROUP BY {bucket}
                     ORDER BY captured_at ASC LIMIT %s""",
                 (hospital_uuid, patient_uuid, start, end, limit),

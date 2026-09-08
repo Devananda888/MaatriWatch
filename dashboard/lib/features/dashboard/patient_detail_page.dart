@@ -334,38 +334,43 @@ class _VitalsSnapshot extends StatelessWidget {
     final cards = [
       _VitalValue(
           icon: Icons.favorite_outline_rounded,
-          label: 'Heart rate',
+          label: 'PPG-derived heart rate',
           value: reading?.heartRate == null
-              ? '—'
-              : '${reading!.heartRate!.toStringAsFixed(0)} bpm'),
+              ? 'Not currently available'
+              : '${reading!.heartRate!.toStringAsFixed(0)} bpm',
+          context: _measurementContext(reading, reading?.heartRateSource)),
       _VitalValue(
           icon: Icons.air_rounded,
-          label: 'SpO₂ estimate',
+          label: 'PPG-derived SpO₂',
           value: reading?.spo2 == null
-              ? '—'
-              : '${reading!.spo2!.toStringAsFixed(0)}%'),
+              ? 'Not currently available'
+              : '${reading!.spo2!.toStringAsFixed(0)}%',
+          context: _measurementContext(reading, reading?.spo2Source)),
       _VitalValue(
         icon: Icons.thermostat_outlined,
-        label: 'Ambient temperature',
+        label: 'Environmental temperature',
         value: reading?.ambientTemperature == null
-            ? '—'
+            ? 'Not currently available'
             : '${reading!.ambientTemperature!.toStringAsFixed(1)} °C${reading!.ambientHumidity == null ? '' : '  ${reading!.ambientHumidity!.toStringAsFixed(0)}%'}',
+        context: _measurementContext(reading, 'environmental_sensor'),
       ),
       _VitalValue(
         icon: Icons.device_thermostat_outlined,
-        label: 'Skin-adjacent temperature',
+        label: 'Device / skin-adjacent temperature',
         value: reading?.skinAdjacentTemperature == null
             ? 'Not currently available'
             : '${reading!.skinAdjacentTemperature!.toStringAsFixed(1)} °C',
+        context: _measurementContext(reading, reading?.temperatureSource),
       ),
       _VitalValue(
         icon: Icons.monitor_heart_outlined,
-        label: 'Cuff blood pressure',
-        value: reading?.bloodPressureSource == null ||
+        label: 'Blood pressure (validated source)',
+        value: !_validBloodPressure(reading) ||
                 reading?.systolic == null ||
                 reading?.diastolic == null
-            ? 'Cuff required'
+            ? 'Not currently available'
             : '${reading!.systolic!.toStringAsFixed(0)}/${reading!.diastolic!.toStringAsFixed(0)}',
+        context: _measurementContext(reading, reading?.bloodPressureSource),
       ),
     ];
     return Wrap(
@@ -380,11 +385,15 @@ class _VitalsSnapshot extends StatelessWidget {
 
 class _VitalValue extends StatelessWidget {
   const _VitalValue(
-      {required this.icon, required this.label, required this.value});
+      {required this.icon,
+      required this.label,
+      required this.value,
+      required this.context});
 
   final IconData icon;
   final String label;
   final String value;
+  final String context;
 
   @override
   Widget build(BuildContext context) => Card(
@@ -397,10 +406,31 @@ class _VitalValue extends StatelessWidget {
               const SizedBox(height: MaatriTokens.space12),
               Text(value, style: Theme.of(context).textTheme.titleLarge),
               Text(label, style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: MaatriTokens.space4),
+              Text(this.context,
+                  style: Theme.of(context).textTheme.labelSmall,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
             ],
           ),
         ),
       );
+}
+
+bool _validBloodPressure(VitalReading? reading) => const {
+      'validated_cuff',
+      'clinician_entered',
+    }.contains(reading?.bloodPressureSource);
+
+String _measurementContext(VitalReading? reading, String? source) {
+  final sourceText = source == 'environmental_sensor'
+      ? 'Environmental sensor (not body temperature)'
+      : measurementSourceLabel(source);
+  final observed = reading?.observedAt ?? reading?.capturedAt;
+  final time = observed == null
+      ? 'observation time unavailable'
+      : 'observed ${DateFormat('d MMM, HH:mm').format(observed)}';
+  return '$sourceText • $time • ${reading?.observationStatus ?? 'unavailable'}';
 }
 
 class _ScreeningSummary extends StatelessWidget {

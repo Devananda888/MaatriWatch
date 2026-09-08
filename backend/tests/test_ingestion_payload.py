@@ -46,6 +46,18 @@ class TelemetryPayloadTest(unittest.TestCase):
         self.assertIsNone(parsed["diastolic_bp"])
         self.assertTrue(parsed["measurement_metadata"]["blood_pressure_discarded"])
 
+    def test_external_device_cannot_claim_a_blood_pressure_measurement(self):
+        data = {
+            "event_id": "sim:session:external-bp",
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "systolic_bp": 140,
+            "diastolic_bp": 90,
+            "measurement_sources": {"blood_pressure": "external_validated_device"},
+        }
+        with self.app.test_request_context("/api/v1/ingest/telemetry", method="POST", json=data):
+            with self.assertRaises(BadRequest):
+                _payload()
+
     def test_event_id_is_required_for_retry_safe_ingestion(self):
         with self.app.test_request_context(
             "/api/v1/ingest/telemetry",

@@ -7,15 +7,20 @@ clinical body temperature and unvalidated wearable BP cannot leak into a UI.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any, Mapping
 from uuid import UUID
 
-_VALID_BP_SOURCES = {"validated_cuff", "external_validated_device", "clinician_entered"}
+_VALID_BP_SOURCES = {"validated_cuff", "clinician_entered"}
+_FRESH_FOR = timedelta(minutes=10)
 
 
-def public_vital(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
+def public_vital(
+    row: Mapping[str, Any] | None,
+    *,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
     if not row:
         return None
     value = dict(row)
@@ -39,14 +44,37 @@ def public_vital(row: Mapping[str, Any] | None) -> dict[str, Any] | None:
         value["blood_pressure_source"] = None
 
     if value.get("sensor_status") in {"contact_lost", "sensor_error", "unavailable"}:
-        value["measurement_quality"] = "unavailable"
+        availability = "unavailable"
     elif value.get("contact_detected") is False:
-        value["measurement_quality"] = "unavailable"
+        availability = "unavailable"
     elif value.get("signal_quality") is not None:
-        value["measurement_quality"] = "available"
+        availability = "available"
     else:
-        value["measurement_quality"] = "unknown"
+        availability = "unknown"
+    value["measurement_quality"] = availability
+    observed = _as_utc(observed_at)
+    clock = _as_utc(now) or datetime.now(timezone.utc)
+    if availability == "unavailable" or observed is None:
+        freshness = "unavailable"
+    elif clock - observed > _FRESH_FOR:
+        freshness = "stale"
+    else:
+        freshness = "current"
+    value["freshness"] = freshness
+    value["is_fresh"] = freshness == "current"
+    value["measurement_sources"] = {
+        "heart_rate": value.get("heart_rate_source"),
+        "spo2": value.get("spo2_source"),
+        "temperature": value.get("temperature_source"),
+        "blood_pressure": value.get("blood_pressure_source"),
+    }
     return {key: _json_value(item) for key, item in value.items()}
+
+
+def _as_utc(value: Any) -> datetime | None:
+    if not isinstance(value, datetime):
+        return None
+    return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def _json_value(value: Any) -> Any:

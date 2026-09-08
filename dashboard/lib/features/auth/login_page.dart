@@ -198,6 +198,8 @@ String _friendlyAuthError(FirebaseAuthException error) => switch (error.code) {
       'wrong-password' ||
       'user-not-found' =>
         'The email or password was not recognised.',
+      'user-disabled' =>
+        'This account is currently unavailable. Contact your hospital administrator.',
       'network-request-failed' =>
         'You appear to be offline. Reconnect and try again.',
       'too-many-requests' =>

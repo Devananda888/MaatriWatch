@@ -3,12 +3,45 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
+from urllib.parse import urlparse
 
 from dotenv import load_dotenv
 
 # Gunicorn and the standalone outbox worker do not automatically load `.env`.
 # Deployment environments still take precedence over this local-development file.
 load_dotenv()
+
+
+def _positive_int(name: str, default: int) -> int:
+    raw = os.getenv(name, str(default)).strip()
+    try:
+        value = int(raw)
+    except ValueError as error:
+        raise RuntimeError(f"{name} must be a positive integer") from error
+    if value <= 0:
+        raise RuntimeError(f"{name} must be a positive integer")
+    return value
+
+
+def _looks_placeholder(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return True
+    normalised = value.strip().lower()
+    return any(token in normalised for token in (
+        "change-me", "replace-with", "your-", "[your", "<your", "example", "placeholder",
+    ))
+
+
+def _is_https_public_url(value: object) -> bool:
+    if _looks_placeholder(value):
+        return False
+    parsed = urlparse(str(value))
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.netloc)
+        and parsed.hostname not in {"localhost", "127.0.0.1", "::1"}
+    )
 
 
 class Config:
@@ -19,6 +52,7 @@ class Config:
     FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
     FIREBASE_DATABASE_URL = os.getenv("FIREBASE_DATABASE_URL")
     FIREBASE_SERVICE_ACCOUNT_JSON = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+    FIREBASE_AUTH_ACTION_URL = os.getenv("FIREBASE_AUTH_ACTION_URL")
     FIREBASE_READY = False
     FIREBASE_AUTH_READY = False
     FIREBASE_RTDB_READY = False
@@ -30,27 +64,38 @@ class Config:
     DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes"}
     DEMO_IN_MEMORY = os.getenv("DEMO_IN_MEMORY", "false").strip().lower() in {"1", "true", "yes"}
     JSON_SORT_KEYS = False
-    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", "16384"))
-    REALTIME_OUTBOX_BATCH_SIZE = int(os.getenv("REALTIME_OUTBOX_BATCH_SIZE", "100"))
+    MAX_CONTENT_LENGTH = _positive_int("MAX_CONTENT_LENGTH", 16384)
+    REALTIME_OUTBOX_BATCH_SIZE = _positive_int("REALTIME_OUTBOX_BATCH_SIZE", 100)
+    DEVICE_OFFLINE_AFTER_MINUTES = _positive_int("DEVICE_OFFLINE_AFTER_MINUTES", 30)
 
     @classmethod
-    def production_configuration_errors(cls) -> list[str]:
+    def production_configuration_errors(cls, values: Mapping[str, object] | None = None) -> list[str]:
         """Return safe configuration names only; never echo configured values."""
-        if not cls.IS_PRODUCTION:
+        source = values or cls.__dict__
+
+        def value(name: str):
+            return source.get(name, getattr(cls, name, None))
+
+        if not value("IS_PRODUCTION"):
             return []
         errors: list[str] = []
-        if not cls.DATABASE_URL:
+        database_url = value("DATABASE_URL")
+        if _looks_placeholder(database_url) or "localhost" in str(database_url).lower():
             errors.append("DATABASE_URL")
-        if not cls.FIREBASE_PROJECT_ID:
+        if _looks_placeholder(value("FIREBASE_PROJECT_ID")):
             errors.append("FIREBASE_PROJECT_ID")
-        if not cls.FIREBASE_SERVICE_ACCOUNT_JSON:
+        service_account = value("FIREBASE_SERVICE_ACCOUNT_JSON")
+        if _looks_placeholder(service_account) or '"private_key"' not in str(service_account):
             errors.append("FIREBASE_SERVICE_ACCOUNT_JSON")
-        if not cls.FIREBASE_DATABASE_URL:
+        if not _is_https_public_url(value("FIREBASE_DATABASE_URL")):
             errors.append("FIREBASE_DATABASE_URL")
-        if not cls.SECRET_KEY or cls.SECRET_KEY == "development-only-change-me":
+        if _looks_placeholder(value("SECRET_KEY")) or len(str(value("SECRET_KEY"))) < 32:
             errors.append("SECRET_KEY")
-        if not cls.CORS_ALLOWED_ORIGINS or "*" in cls.CORS_ALLOWED_ORIGINS:
+        origins = value("CORS_ALLOWED_ORIGINS") or ()
+        if not origins or "*" in origins or not all(_is_https_public_url(origin) for origin in origins):
             errors.append("CORS_ALLOWED_ORIGINS")
-        if cls.DEMO_MODE or cls.DEMO_IN_MEMORY:
+        if not _is_https_public_url(value("FIREBASE_AUTH_ACTION_URL")):
+            errors.append("FIREBASE_AUTH_ACTION_URL")
+        if value("DEMO_MODE") or value("DEMO_IN_MEMORY"):
             errors.append("DEMO_MODE/DEMO_IN_MEMORY must be false")
         return errors

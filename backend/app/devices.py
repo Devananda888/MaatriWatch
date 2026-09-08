@@ -6,10 +6,11 @@ import secrets
 from uuid import UUID
 
 from argon2 import PasswordHasher
-from flask import Blueprint, abort, g, jsonify, request
+from flask import Blueprint, abort, current_app, g, jsonify, request
 
 from .auth import require_hospital_role
 from .db import get_db
+from .device_health import device_health
 
 devices_bp = Blueprint("devices", __name__)
 _hasher = PasswordHasher()
@@ -35,14 +36,39 @@ def list_devices(hospital_id: str):
     hospital = _uuid(hospital_id, "hospital_id")
     with get_db().cursor() as cursor:
         cursor.execute(
-            """SELECT d.id, d.serial_number, d.status, d.firmware_version, d.last_seen_at,
+            """SELECT d.id, d.serial_number, d.status, d.firmware_version, d.last_seen_at, d.last_observed_at,
+                      d.last_battery_percent, d.last_sensor_status, d.last_contact_detected, d.last_signal_quality,
                       d.assigned_patient_id, p.full_name AS assigned_patient_name
                  FROM devices d LEFT JOIN patients p ON p.id = d.assigned_patient_id
                 WHERE d.hospital_id = %s ORDER BY d.status, d.serial_number""",
             (hospital,),
         )
         items = [dict(row) for row in cursor.fetchall()]
+    for item in items:
+        item["health"] = device_health(
+            item,
+            offline_after_minutes=current_app.config["DEVICE_OFFLINE_AFTER_MINUTES"],
+        )
     return jsonify({"items": items})
+
+
+@devices_bp.get("/hospitals/<hospital_id>/devices/<device_id>/health")
+@require_hospital_role("clinician", "hospital_admin")
+def get_device_health(hospital_id: str, device_id: str):
+    hospital, device = _uuid(hospital_id, "hospital_id"), _uuid(device_id, "device_id")
+    with get_db().cursor() as cursor:
+        cursor.execute(
+            """SELECT id, serial_number, status, last_seen_at, last_observed_at, last_battery_percent,
+                      last_sensor_status, last_contact_detected, last_signal_quality
+                 FROM devices WHERE id = %s AND hospital_id = %s""",
+            (device, hospital),
+        )
+        value = cursor.fetchone()
+    if not value:
+        abort(404, description="Device was not found in this hospital")
+    return jsonify({"device_id": str(value["id"]), "health": device_health(
+        value, offline_after_minutes=current_app.config["DEVICE_OFFLINE_AFTER_MINUTES"]
+    )})
 
 
 @devices_bp.post("/hospitals/<hospital_id>/devices")

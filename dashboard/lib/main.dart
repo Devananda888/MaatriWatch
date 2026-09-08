@@ -8,7 +8,8 @@ import 'firebase_options.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   const demoMode = bool.fromEnvironment('DEMO_MODE', defaultValue: false);
-  final configurationError = DashboardRuntimeConfig.validationError();
+  final configurationError = DashboardRuntimeConfig.validationError() ??
+      DefaultFirebaseOptions.validationError();
   var firebaseReady =
       configurationError == null && DefaultFirebaseOptions.isConfigured;
   String? initializationError = configurationError;
