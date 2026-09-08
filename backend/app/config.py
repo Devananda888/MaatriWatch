@@ -12,6 +12,8 @@ load_dotenv()
 
 
 class Config:
+    ENVIRONMENT = os.getenv("APP_ENV", os.getenv("FLASK_ENV", "development")).strip().lower()
+    IS_PRODUCTION = ENVIRONMENT in {"production", "prod"}
     SECRET_KEY = os.getenv("SECRET_KEY", "development-only-change-me")
     DATABASE_URL = os.getenv("DATABASE_URL")
     FIREBASE_PROJECT_ID = os.getenv("FIREBASE_PROJECT_ID")
@@ -30,3 +32,25 @@ class Config:
     JSON_SORT_KEYS = False
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", "16384"))
     REALTIME_OUTBOX_BATCH_SIZE = int(os.getenv("REALTIME_OUTBOX_BATCH_SIZE", "100"))
+
+    @classmethod
+    def production_configuration_errors(cls) -> list[str]:
+        """Return safe configuration names only; never echo configured values."""
+        if not cls.IS_PRODUCTION:
+            return []
+        errors: list[str] = []
+        if not cls.DATABASE_URL:
+            errors.append("DATABASE_URL")
+        if not cls.FIREBASE_PROJECT_ID:
+            errors.append("FIREBASE_PROJECT_ID")
+        if not cls.FIREBASE_SERVICE_ACCOUNT_JSON:
+            errors.append("FIREBASE_SERVICE_ACCOUNT_JSON")
+        if not cls.FIREBASE_DATABASE_URL:
+            errors.append("FIREBASE_DATABASE_URL")
+        if not cls.SECRET_KEY or cls.SECRET_KEY == "development-only-change-me":
+            errors.append("SECRET_KEY")
+        if not cls.CORS_ALLOWED_ORIGINS or "*" in cls.CORS_ALLOWED_ORIGINS:
+            errors.append("CORS_ALLOWED_ORIGINS")
+        if cls.DEMO_MODE or cls.DEMO_IN_MEMORY:
+            errors.append("DEMO_MODE/DEMO_IN_MEMORY must be false")
+        return errors

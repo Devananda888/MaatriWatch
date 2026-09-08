@@ -8,6 +8,7 @@ from flask import Blueprint, abort, g, jsonify, request
 
 from .auth import require_firebase_user
 from .db import get_db
+from .measurements import public_vital
 
 patient_bp = Blueprint("patient", __name__)
 _CONSENT_TYPES = {"monitoring", "care_team_sharing", "emergency_contact", "location"}
@@ -42,8 +43,17 @@ def home():
     connection = get_db()
     with connection.cursor() as cursor:
         patient = _patient_for_actor(cursor)
-        cursor.execute("""SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c, systolic_bp, diastolic_bp,
-                                 battery_percent FROM vital_readings WHERE patient_id = %s ORDER BY captured_at DESC LIMIT 1""", (patient["id"],))
+        cursor.execute(
+            """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent,
+                      temperature_c, temperature_source, systolic_bp, diastolic_bp,
+                      blood_pressure_source, battery_percent, contact_detected,
+                      signal_quality, sensor_status
+               FROM vital_readings
+               WHERE patient_id = %s
+               ORDER BY observed_at DESC, id DESC
+               LIMIT 1""",
+            (patient["id"],),
+        )
         latest_vital = cursor.fetchone()
         cursor.execute("""SELECT id, severity, status, alert_type, message, triggered_at, last_seen_at
                           FROM alerts WHERE patient_id = %s AND status IN ('open', 'acknowledged', 'escalated')
@@ -55,7 +65,16 @@ def home():
         cursor.execute("""SELECT serial_number, firmware_version, last_seen_at, status FROM devices
                           WHERE assigned_patient_id = %s AND status = 'assigned' ORDER BY last_seen_at DESC NULLS LAST LIMIT 1""", (patient["id"],))
         device = cursor.fetchone()
-    return jsonify({"patient": _row(patient), "latest_vital": _row(latest_vital), "active_alerts": [_row(x) for x in alerts], "care_plan": [_row(x) for x in tasks], "device": _row(device), "danger_signs": _DANGER_SIGNS})
+    return jsonify(
+        {
+            "patient": _row(patient),
+            "latest_vital": public_vital(latest_vital),
+            "active_alerts": [_row(x) for x in alerts],
+            "care_plan": [_row(x) for x in tasks],
+            "device": _row(device),
+            "danger_signs": _DANGER_SIGNS,
+        }
+    )
 
 
 @patient_bp.post("/patient/sos")

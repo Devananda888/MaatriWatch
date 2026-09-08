@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:maatriwatch_patient_app/core/design_tokens.dart';
 
-
 class StatusChip extends StatelessWidget {
   const StatusChip({super.key, required this.status, this.compact = false});
 

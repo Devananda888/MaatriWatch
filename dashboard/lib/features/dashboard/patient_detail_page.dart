@@ -56,7 +56,8 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
         widget.api.patient(widget.hospital.hospitalId, widget.patient.id),
         widget.api.vitals(widget.hospital.hospitalId, widget.patient.id),
         widget.api.notes(widget.hospital.hospitalId, widget.patient.id),
-        widget.api.alerts(widget.hospital.hospitalId, patientId: widget.patient.id),
+        widget.api
+            .alerts(widget.hospital.hospitalId, patientId: widget.patient.id),
       ]);
       if (!mounted) return;
       setState(() {
@@ -77,7 +78,8 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
       if (mounted) {
         setState(() {
           _loading = false;
-          _error = 'We could not load this patient record. Check your connection and try again.';
+          _error =
+              'We could not load this patient record. Check your connection and try again.';
         });
       }
     }
@@ -88,14 +90,18 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
     if (text.isEmpty || _savingNote) return;
     setState(() => _savingNote = true);
     try {
-      final created = await widget.api.createNote(widget.hospital.hospitalId, widget.patient.id, text);
+      final created = await widget.api
+          .createNote(widget.hospital.hospitalId, widget.patient.id, text);
       if (!mounted) return;
       setState(() {
         _notes = [created, ..._notes];
         _note.clear();
       });
     } on ApiException catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
     } finally {
       if (mounted) setState(() => _savingNote = false);
     }
@@ -108,7 +114,10 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
       appBar: AppBar(
         title: Text(detail?.patient.name ?? widget.patient.name),
         actions: [
-          IconButton(tooltip: 'Refresh patient record', onPressed: _loading ? null : _load, icon: const Icon(Icons.refresh_rounded)),
+          IconButton(
+              tooltip: 'Refresh patient record',
+              onPressed: _loading ? null : _load,
+              icon: const Icon(Icons.refresh_rounded)),
           const SizedBox(width: MaatriTokens.space8),
         ],
       ),
@@ -134,7 +143,11 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                                     Expanded(flex: 2, child: side),
                                   ],
                                 )
-                              : Column(children: [main, const SizedBox(height: MaatriTokens.space16), side]),
+                              : Column(children: [
+                                  main,
+                                  const SizedBox(height: MaatriTokens.space16),
+                                  side
+                                ]),
                         );
                       },
                     ),
@@ -156,11 +169,14 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(detail.patient.name, style: Theme.of(context).textTheme.headlineSmall),
+                      Text(detail.patient.name,
+                          style: Theme.of(context).textTheme.headlineSmall),
                       const SizedBox(height: MaatriTokens.space4),
-                      Text('MRN ${detail.patient.medicalRecordNumber}  •  ${detail.patient.language ?? 'Language not recorded'}'),
+                      Text(
+                          'MRN ${detail.patient.medicalRecordNumber}  •  ${detail.patient.language ?? 'Language not recorded'}'),
                       if (detail.patient.deliveryDate != null)
-                        Text('Delivery date: ${DateFormat('d MMM y').format(detail.patient.deliveryDate!)}'),
+                        Text(
+                            'Delivery date: ${DateFormat('d MMM y').format(detail.patient.deliveryDate!)}'),
                     ],
                   ),
                   StatusChip(status: detail.status),
@@ -183,14 +199,17 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                     spacing: MaatriTokens.space12,
                     runSpacing: MaatriTokens.space8,
                     children: [
-                      Text('Vital trends (last 24 hours)', style: Theme.of(context).textTheme.titleLarge),
+                      Text('Vital trends (last 24 hours)',
+                          style: Theme.of(context).textTheme.titleLarge),
                       SegmentedButton<VitalMetric>(
                         segments: VitalMetric.values
-                            .map((metric) => ButtonSegment(value: metric, label: Text(metric.label)))
+                            .map((metric) => ButtonSegment(
+                                value: metric, label: Text(metric.label)))
                             .toList(growable: false),
                         selected: {_metric},
                         showSelectedIcon: false,
-                        onSelectionChanged: (selection) => setState(() => _metric = selection.first),
+                        onSelectionChanged: (selection) =>
+                            setState(() => _metric = selection.first),
                       ),
                     ],
                   ),
@@ -200,7 +219,8 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
               ),
             ),
           ),
-          if (detail.latestScreening != null && detail.latestScreening!.isNotEmpty) ...[
+          if (detail.latestScreening != null &&
+              detail.latestScreening!.isNotEmpty) ...[
             const SizedBox(height: MaatriTokens.space16),
             _ScreeningSummary(screening: detail.latestScreening!),
           ],
@@ -216,14 +236,16 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Text('Clinical notes', style: Theme.of(context).textTheme.titleLarge),
+                  Text('Clinical notes',
+                      style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: MaatriTokens.space12),
                   TextField(
                     controller: _note,
                     minLines: 3,
                     maxLines: 5,
                     maxLength: 5000,
-                    decoration: const InputDecoration(hintText: 'Add a clinical note'),
+                    decoration:
+                        const InputDecoration(hintText: 'Add a clinical note'),
                   ),
                   const SizedBox(height: MaatriTokens.space8),
                   Align(
@@ -231,7 +253,10 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                     child: ElevatedButton.icon(
                       onPressed: _savingNote ? null : _createNote,
                       icon: _savingNote
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2))
                           : const Icon(Icons.add_comment_outlined),
                       label: const Text('Add note'),
                     ),
@@ -242,7 +267,8 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
                   else
                     ..._notes.map(
                       (note) => Padding(
-                        padding: const EdgeInsets.only(bottom: MaatriTokens.space16),
+                        padding:
+                            const EdgeInsets.only(bottom: MaatriTokens.space16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -267,18 +293,23 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Active alerts', style: Theme.of(context).textTheme.titleLarge),
+                  Text('Active alerts',
+                      style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: MaatriTokens.space12),
                   if (_alerts.isEmpty)
                     const Text('No active alerts.')
                   else
                     ..._alerts.map(
                       (alert) => Padding(
-                        padding: const EdgeInsets.only(bottom: MaatriTokens.space12),
+                        padding:
+                            const EdgeInsets.only(bottom: MaatriTokens.space12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Wrap(spacing: MaatriTokens.space8, children: [StatusChip(status: alert.severity, compact: true), StatusChip(status: alert.status, compact: true)]),
+                            Wrap(spacing: MaatriTokens.space8, children: [
+                              StatusChip(status: alert.severity, compact: true),
+                              StatusChip(status: alert.status, compact: true)
+                            ]),
                             const SizedBox(height: MaatriTokens.space4),
                             Text(alert.message),
                           ],
@@ -301,8 +332,18 @@ class _VitalsSnapshot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cards = [
-      _VitalValue(icon: Icons.favorite_outline_rounded, label: 'Heart rate', value: reading?.heartRate == null ? '—' : '${reading!.heartRate!.toStringAsFixed(0)} bpm'),
-      _VitalValue(icon: Icons.air_rounded, label: 'SpO₂ estimate', value: reading?.spo2 == null ? '—' : '${reading!.spo2!.toStringAsFixed(0)}%'),
+      _VitalValue(
+          icon: Icons.favorite_outline_rounded,
+          label: 'Heart rate',
+          value: reading?.heartRate == null
+              ? '—'
+              : '${reading!.heartRate!.toStringAsFixed(0)} bpm'),
+      _VitalValue(
+          icon: Icons.air_rounded,
+          label: 'SpO₂ estimate',
+          value: reading?.spo2 == null
+              ? '—'
+              : '${reading!.spo2!.toStringAsFixed(0)}%'),
       _VitalValue(
         icon: Icons.thermostat_outlined,
         label: 'Ambient temperature',
@@ -311,9 +352,18 @@ class _VitalsSnapshot extends StatelessWidget {
             : '${reading!.ambientTemperature!.toStringAsFixed(1)} °C${reading!.ambientHumidity == null ? '' : '  ${reading!.ambientHumidity!.toStringAsFixed(0)}%'}',
       ),
       _VitalValue(
+        icon: Icons.device_thermostat_outlined,
+        label: 'Skin-adjacent temperature',
+        value: reading?.skinAdjacentTemperature == null
+            ? 'Not currently available'
+            : '${reading!.skinAdjacentTemperature!.toStringAsFixed(1)} °C',
+      ),
+      _VitalValue(
         icon: Icons.monitor_heart_outlined,
         label: 'Cuff blood pressure',
-        value: reading?.systolic == null || reading?.diastolic == null
+        value: reading?.bloodPressureSource == null ||
+                reading?.systolic == null ||
+                reading?.diastolic == null
             ? 'Cuff required'
             : '${reading!.systolic!.toStringAsFixed(0)}/${reading!.diastolic!.toStringAsFixed(0)}',
       ),
@@ -321,13 +371,16 @@ class _VitalsSnapshot extends StatelessWidget {
     return Wrap(
       spacing: MaatriTokens.space12,
       runSpacing: MaatriTokens.space12,
-      children: cards.map((card) => SizedBox(width: 170, child: card)).toList(growable: false),
+      children: cards
+          .map((card) => SizedBox(width: 170, child: card))
+          .toList(growable: false),
     );
   }
 }
 
 class _VitalValue extends StatelessWidget {
-  const _VitalValue({required this.icon, required this.label, required this.value});
+  const _VitalValue(
+      {required this.icon, required this.label, required this.value});
 
   final IconData icon;
   final String label;
@@ -362,10 +415,13 @@ class _ScreeningSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Latest screening', style: Theme.of(context).textTheme.titleLarge),
+              Text('Latest screening',
+                  style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: MaatriTokens.space8),
-              Text('${screening['screening_type'] ?? 'Screening'}  •  ${screening['risk_level'] ?? 'Not classified'}'),
-              if (screening['score'] != null) Text('Score: ${screening['score']}'),
+              Text(
+                  '${screening['screening_type'] ?? 'Screening'}  •  ${screening['risk_level'] ?? 'Not classified'}'),
+              if (screening['score'] != null)
+                Text('Score: ${screening['score']}'),
             ],
           ),
         ),
@@ -385,11 +441,13 @@ class _ErrorView extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.cloud_off_outlined, color: MaatriTokens.warning, size: 42),
+              const Icon(Icons.cloud_off_outlined,
+                  color: MaatriTokens.warning, size: 42),
               const SizedBox(height: MaatriTokens.space16),
               Text(message, textAlign: TextAlign.center),
               const SizedBox(height: MaatriTokens.space16),
-              OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+              OutlinedButton(
+                  onPressed: onRetry, child: const Text('Try again')),
             ],
           ),
         ),

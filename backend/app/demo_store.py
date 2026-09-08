@@ -18,6 +18,7 @@ from typing import Any
 from uuid import NAMESPACE_URL, uuid5
 
 from .alerting import POLICY_VERSION, evaluate_alerts
+from .measurements import public_vital
 
 
 UTC = timezone.utc
@@ -207,10 +208,15 @@ class DemoStore:
                 "heart_rate_bpm": normalized.get("heart_rate_bpm"),
                 "spo2_percent": normalized.get("spo2_percent"),
                 "temperature_c": normalized.get("temperature_c"),
+                "temperature_source": normalized.get("temperature_source"),
                 "ambient_temperature_c": normalized.get("ambient_temperature_c"),
                 "ambient_humidity_percent": normalized.get("ambient_humidity_percent"),
                 "systolic_bp": normalized.get("systolic_bp"),
                 "diastolic_bp": normalized.get("diastolic_bp"),
+                "blood_pressure_source": normalized.get("blood_pressure_source"),
+                "contact_detected": normalized.get("contact_detected"),
+                "signal_quality": normalized.get("signal_quality"),
+                "sensor_status": normalized.get("sensor_status"),
                 "battery_percent": normalized.get("battery_percent"),
                 "blood_loss_ml": normalized.get("blood_loss_ml"),
                 "bleeding_reported": normalized["bleeding_reported"],
@@ -652,10 +658,14 @@ class DemoStore:
                 "heart_rate_bpm": sample_heart_rate,
                 "spo2_percent": round(spo2 - (0.2 if sample % 3 == 0 else 0), 1),
                 "temperature_c": round(temperature + (0.1 if sample == 3 else 0), 1),
+                "temperature_source": "wearable_skin_adjacent",
                 "ambient_temperature_c": round(26.0 + (0.2 if sample % 2 else 0), 1),
                 "ambient_humidity_percent": 58.0 + sample,
                 "systolic_bp": sample_systolic,
                 "diastolic_bp": sample_diastolic,
+                "blood_pressure_source": "validated_cuff",
+                "contact_detected": True,
+                "sensor_status": "ok",
                 "battery_percent": 92 - sample,
                 "motion": motion,
                 "bleeding_reported": False,
@@ -680,10 +690,15 @@ class DemoStore:
             "heart_rate_bpm": normalized.get("heart_rate_bpm"),
             "spo2_percent": normalized.get("spo2_percent"),
             "temperature_c": normalized.get("temperature_c"),
+            "temperature_source": normalized.get("temperature_source"),
             "ambient_temperature_c": normalized.get("ambient_temperature_c"),
             "ambient_humidity_percent": normalized.get("ambient_humidity_percent"),
             "systolic_bp": normalized.get("systolic_bp"),
             "diastolic_bp": normalized.get("diastolic_bp"),
+            "blood_pressure_source": normalized.get("blood_pressure_source"),
+            "contact_detected": normalized.get("contact_detected"),
+            "signal_quality": normalized.get("signal_quality"),
+            "sensor_status": normalized.get("sensor_status"),
             "battery_percent": normalized.get("battery_percent"),
             "blood_loss_ml": normalized.get("blood_loss_ml"),
             "bleeding_reported": normalized["bleeding_reported"],
@@ -717,10 +732,15 @@ class DemoStore:
             "heart_rate_bpm": payload.get("heart_rate_bpm"),
             "spo2_percent": payload.get("spo2_percent"),
             "temperature_c": payload.get("temperature_c"),
+            "temperature_source": payload.get("temperature_source", "wearable_skin_adjacent"),
             "ambient_temperature_c": payload.get("ambient_temperature_c"),
             "ambient_humidity_percent": payload.get("ambient_humidity_percent"),
             "systolic_bp": payload.get("systolic_bp"),
             "diastolic_bp": payload.get("diastolic_bp"),
+            "blood_pressure_source": payload.get("blood_pressure_source"),
+            "contact_detected": payload.get("contact_detected", payload.get("contact")),
+            "signal_quality": payload.get("signal_quality"),
+            "sensor_status": payload.get("sensor_status", "unknown"),
             "battery_percent": payload.get("battery_percent"),
             "blood_loss_ml": payload.get("blood_loss_ml"),
             "bleeding_reported": bool(payload.get("bleeding_reported", False)),
@@ -849,8 +869,13 @@ class DemoStore:
             "blood_loss_ml",
             "bleeding_reported",
             "motion",
+            "temperature_source",
+            "blood_pressure_source",
+            "contact_detected",
+            "signal_quality",
+            "sensor_status",
         )
-        return {field: _json_copy(reading[field]) for field in fields}
+        return public_vital({field: _json_copy(reading[field]) for field in fields})
 
     def _live_vital(self, reading: dict[str, Any]) -> dict[str, Any]:
         vital = self._vital_public(reading) or {}

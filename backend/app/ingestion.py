@@ -16,6 +16,7 @@ from psycopg.types.json import Jsonb
 
 from .alerting import POLICY_VERSION, evaluate_alerts
 from .db import get_db
+from .measurements import public_vital
 from .outbox import deliver_outbox_ids, enqueue_projection
 
 ingestion_bp = Blueprint("ingestion", __name__)
@@ -52,6 +53,10 @@ _MOTION_NUMERIC_FIELDS = {
     "classifier_confidence": (0, 1),
 }
 _EVENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
+_SENSOR_STATUSES = {"ok", "contact_lost", "sensor_error", "unavailable", "unknown"}
+_HEART_AND_SPO2_SOURCES = {"wearable_ppg", "external_validated_device", "clinician_entered"}
+_TEMPERATURE_SOURCES = {"wearable_skin_adjacent", "external_validated_device", "clinician_entered"}
+_BLOOD_PRESSURE_SOURCES = {"validated_cuff", "external_validated_device", "clinician_entered"}
 
 
 def _parse_timestamp(value):
@@ -144,6 +149,45 @@ def _payload():
             if value is None
             else _number(value, field, *_RANGES[field], integer=field in _INTEGER_FIELDS)
         )
+    sources = data.get("measurement_sources", {})
+    if not isinstance(sources, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in sources.items()):
+        abort(400, description="measurement_sources must be an object of string values")
+
+    def source(name, allowed, default=None):
+        value = sources.get(name, default)
+        if value is not None and value not in allowed:
+            abort(400, description=f"Unsupported source for {name}")
+        return value
+
+    heart_rate_source = source("heart_rate", _HEART_AND_SPO2_SOURCES, "wearable_ppg")
+    spo2_source = source("spo2", _HEART_AND_SPO2_SOURCES, "wearable_ppg")
+    temperature_source = source("temperature", _TEMPERATURE_SOURCES, "wearable_skin_adjacent")
+    blood_pressure_source = source("blood_pressure", _BLOOD_PRESSURE_SOURCES)
+    contact_detected = data.get("contact_detected", data.get("contact"))
+    if contact_detected is not None and not isinstance(contact_detected, bool):
+        abort(400, description="contact_detected must be a boolean")
+    signal_quality = data.get("signal_quality")
+    if signal_quality is not None:
+        signal_quality = _number(signal_quality, "signal_quality", 0, 1)
+    sensor_status = data.get("sensor_status", "unknown")
+    if sensor_status not in _SENSOR_STATUSES:
+        abort(400, description="sensor_status is invalid")
+
+    # Do not allow a wearable's PPG estimate to become a blood-pressure
+    # measurement merely because it included systolic/diastolic fields.
+    unprovenanced_bp = (
+        (parsed["systolic_bp"] is not None or parsed["diastolic_bp"] is not None)
+        and blood_pressure_source is None
+    )
+    if unprovenanced_bp:
+        parsed["systolic_bp"] = None
+        parsed["diastolic_bp"] = None
+    if contact_detected is False or sensor_status in {"contact_lost", "sensor_error", "unavailable"}:
+        if heart_rate_source == "wearable_ppg":
+            parsed["heart_rate_bpm"] = None
+        if spo2_source == "wearable_ppg":
+            parsed["spo2_percent"] = None
+
     motion = _parse_motion(data.get("motion"))
     if not any(value is not None for value in parsed.values()) and not motion:
         abort(400, description="At least one measurement or motion field is required")
@@ -160,8 +204,25 @@ def _payload():
             "source_event_id": event_id,
             "source_sequence": source_sequence,
             "captured_at": _parse_timestamp(data.get("captured_at")),
+            "observed_at": _parse_timestamp(data.get("captured_at")),
             "motion": motion,
             "bleeding_reported": bleeding_reported,
+            "heart_rate_source": heart_rate_source,
+            "spo2_source": spo2_source,
+            "temperature_source": temperature_source,
+            "blood_pressure_source": blood_pressure_source,
+            "contact_detected": contact_detected,
+            "signal_quality": signal_quality,
+            "sensor_status": sensor_status,
+            "measurement_metadata": {
+                "sources": {
+                    "heart_rate": heart_rate_source,
+                    "spo2": spo2_source,
+                    "temperature": temperature_source,
+                    "blood_pressure": blood_pressure_source,
+                },
+                "blood_pressure_discarded": unprovenanced_bp,
+            },
             "raw_payload": data,
             "payload_fingerprint": _fingerprint(data),
         }
@@ -268,21 +329,32 @@ def _active_status(cursor, hospital_id, patient_id):
 
 
 def _live_vitals_payload(device, payload, saved, active_severity):
-    return {
-        "hospital_id": str(device["hospital_id"]),
-        "patient_id": str(device["assigned_patient_id"]),
-        "reading": {
-            "captured_at": payload["captured_at"].isoformat(),
-            "received_at": saved["received_at"].isoformat(),
+    reading = public_vital(
+        {
+            "captured_at": payload["captured_at"],
+            "observed_at": payload["observed_at"],
+            "received_at": saved["received_at"],
             "device_id": str(device["id"]),
             "source_event_id": payload["source_event_id"],
             "source_sequence": payload["source_sequence"],
             **{field: payload[field] for field in _MEASUREMENT_FIELDS},
+            "heart_rate_source": payload["heart_rate_source"],
+            "spo2_source": payload["spo2_source"],
+            "temperature_source": payload["temperature_source"],
+            "blood_pressure_source": payload["blood_pressure_source"],
+            "contact_detected": payload["contact_detected"],
+            "signal_quality": payload["signal_quality"],
+            "sensor_status": payload["sensor_status"],
             "motion": payload["motion"],
             "bleeding_reported": payload["bleeding_reported"],
             "assessment_state": "rule_evaluated",
             "status": active_severity or "normal",
-        },
+        }
+    )
+    return {
+        "hospital_id": str(device["hospital_id"]),
+        "patient_id": str(device["assigned_patient_id"]),
+        "reading": reading,
     }
 
 
@@ -356,16 +428,22 @@ def ingest_vitals():
         cursor.execute(
             """INSERT INTO vital_readings
                (hospital_id, patient_id, device_id, source_event_id, source_sequence,
-                payload_fingerprint, captured_at, heart_rate_bpm, spo2_percent,
+                payload_fingerprint, captured_at, observed_at, heart_rate_bpm, spo2_percent,
                 temperature_c, ambient_temperature_c, ambient_humidity_percent,
                 systolic_bp, diastolic_bp, battery_percent, blood_loss_ml,
-                bleeding_reported, motion, raw_payload)
+                bleeding_reported, motion, heart_rate_source, spo2_source,
+                temperature_source, blood_pressure_source, contact_detected,
+                signal_quality, sensor_status, measurement_metadata, raw_payload)
                VALUES (%(hospital_id)s, %(patient_id)s, %(device_id)s, %(source_event_id)s,
                        %(source_sequence)s, %(payload_fingerprint)s, %(captured_at)s,
-                       %(heart_rate_bpm)s, %(spo2_percent)s, %(temperature_c)s,
+                       %(observed_at)s, %(heart_rate_bpm)s, %(spo2_percent)s, %(temperature_c)s,
                        %(ambient_temperature_c)s, %(ambient_humidity_percent)s,
                        %(systolic_bp)s, %(diastolic_bp)s, %(battery_percent)s,
-                       %(blood_loss_ml)s, %(bleeding_reported)s, %(motion)s, %(raw_payload)s)
+                       %(blood_loss_ml)s, %(bleeding_reported)s, %(motion)s,
+                       %(heart_rate_source)s, %(spo2_source)s, %(temperature_source)s,
+                       %(blood_pressure_source)s, %(contact_detected)s,
+                       %(signal_quality)s, %(sensor_status)s, %(measurement_metadata)s,
+                       %(raw_payload)s)
                ON CONFLICT (device_id, source_event_id) WHERE source_event_id IS NOT NULL DO NOTHING
                RETURNING id, received_at""",
             {
@@ -374,6 +452,7 @@ def ingest_vitals():
                 "device_id": device["id"],
                 **payload,
                 "motion": Jsonb(payload["motion"]),
+                "measurement_metadata": Jsonb(payload["measurement_metadata"]),
                 "raw_payload": Jsonb(payload["raw_payload"]),
             },
         )

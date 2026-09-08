@@ -25,6 +25,26 @@ class TelemetryPayloadTest(unittest.TestCase):
             parsed = _payload()
         self.assertEqual(parsed["source_event_id"], "sim:session:1")
         self.assertEqual(parsed["motion"]["impact_g"], 0.2)
+        self.assertEqual(parsed["temperature_source"], "wearable_skin_adjacent")
+
+    def test_unprovenanced_bp_and_contact_lost_ppg_are_not_saved_as_readings(self):
+        data = {
+            "event_id": "sim:session:quality",
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "heart_rate_bpm": 170,
+            "spo2_percent": 94,
+            "temperature_c": 36.6,
+            "systolic_bp": 150,
+            "diastolic_bp": 100,
+            "contact_detected": False,
+        }
+        with self.app.test_request_context("/api/v1/ingest/telemetry", method="POST", json=data):
+            parsed = _payload()
+        self.assertIsNone(parsed["heart_rate_bpm"])
+        self.assertIsNone(parsed["spo2_percent"])
+        self.assertIsNone(parsed["systolic_bp"])
+        self.assertIsNone(parsed["diastolic_bp"])
+        self.assertTrue(parsed["measurement_metadata"]["blood_pressure_discarded"])
 
     def test_event_id_is_required_for_retry_safe_ingestion(self):
         with self.app.test_request_context(

@@ -39,15 +39,27 @@ def telemetry(scenario: str, session_id: str, sequence: int) -> dict:
         "heart_rate_bpm": 76,
         "spo2_percent": 98,
         "temperature_c": 36.8,
-        "systolic_bp": 112,
-        "diastolic_bp": 72,
         "battery_percent": 84,
         "motion": {"impact_g": 0.1, "orientation_change_degrees": 2, "post_impact_immobile_seconds": 0},
     }
     if scenario == "hypertension":
-        payload.update({"systolic_bp": 165, "diastolic_bp": 112})
+        payload.update(
+            {
+                "systolic_bp": 165,
+                "diastolic_bp": 112,
+                "measurement_sources": {"blood_pressure": "validated_cuff"},
+            }
+        )
     elif scenario == "pph":
-        payload.update({"heart_rate_bpm": 112, "systolic_bp": 88, "blood_loss_ml": 350, "bleeding_reported": True})
+        payload.update(
+            {
+                "heart_rate_bpm": 112,
+                "systolic_bp": 88,
+                "blood_loss_ml": 350,
+                "bleeding_reported": True,
+                "measurement_sources": {"blood_pressure": "validated_cuff"},
+            }
+        )
     elif scenario == "fall":
         payload["motion"] = {"fall_detected": True, "impact_g": 3.1, "orientation_change_degrees": 85, "post_impact_immobile_seconds": 35}
     return payload

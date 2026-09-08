@@ -2,7 +2,8 @@ double? asDouble(Object? value) => value is num ? value.toDouble() : null;
 
 int asInt(Object? value) => value is num ? value.toInt() : 0;
 
-DateTime? asDateTime(Object? value) => value is String ? DateTime.tryParse(value)?.toLocal() : null;
+DateTime? asDateTime(Object? value) =>
+    value is String ? DateTime.tryParse(value)?.toLocal() : null;
 
 Map<String, dynamic> asMap(Object? value) =>
     value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};
@@ -18,7 +19,8 @@ class HospitalMembership {
   final String hospitalName;
   final String role;
 
-  factory HospitalMembership.fromJson(Map<String, dynamic> json) => HospitalMembership(
+  factory HospitalMembership.fromJson(Map<String, dynamic> json) =>
+      HospitalMembership(
         hospitalId: json['hospital_id'] as String,
         hospitalName: json['hospital_name'] as String? ?? 'Hospital',
         role: json['role'] as String? ?? '',
@@ -30,7 +32,7 @@ class VitalReading {
     required this.capturedAt,
     this.heartRate,
     this.spo2,
-    this.temperature,
+    this.skinAdjacentTemperature,
     this.ambientTemperature,
     this.ambientHumidity,
     this.systolic,
@@ -38,13 +40,18 @@ class VitalReading {
     this.battery,
     this.bloodLoss,
     this.sampleCount,
+    this.bloodPressureSource,
+    this.contactDetected,
+    this.measurementQuality,
   });
 
   final DateTime? capturedAt;
   final double? heartRate;
   final double? spo2;
-  /// Clinical body temperature, when supplied by a validated body sensor.
-  final double? temperature;
+
+  /// Wearable skin-adjacent/device temperature. This is not body temperature.
+  final double? skinAdjacentTemperature;
+
   /// DHT11 environmental reading. Never interpret as body temperature.
   final double? ambientTemperature;
   final double? ambientHumidity;
@@ -53,19 +60,26 @@ class VitalReading {
   final double? battery;
   final double? bloodLoss;
   final int? sampleCount;
+  final String? bloodPressureSource;
+  final bool? contactDetected;
+  final String? measurementQuality;
 
   factory VitalReading.fromJson(Map<String, dynamic> json) => VitalReading(
         capturedAt: asDateTime(json['captured_at']),
         heartRate: asDouble(json['heart_rate_bpm']),
         spo2: asDouble(json['spo2_percent']),
-        temperature: asDouble(json['temperature_c']),
+        skinAdjacentTemperature: asDouble(json['skin_adjacent_temperature_c']),
         ambientTemperature: asDouble(json['ambient_temperature_c']),
         ambientHumidity: asDouble(json['ambient_humidity_percent']),
         systolic: asDouble(json['systolic_bp']),
         diastolic: asDouble(json['diastolic_bp']),
         battery: asDouble(json['battery_percent']),
         bloodLoss: asDouble(json['blood_loss_ml']),
-        sampleCount: json['sample_count'] is num ? asInt(json['sample_count']) : null,
+        sampleCount:
+            json['sample_count'] is num ? asInt(json['sample_count']) : null,
+        bloodPressureSource: json['blood_pressure_source'] as String?,
+        contactDetected: json['contact_detected'] as bool?,
+        measurementQuality: json['measurement_quality'] as String?,
       );
 }
 
@@ -103,7 +117,8 @@ class PatientSummary {
       activeAlertCount: asInt(json['active_alert_count']),
       language: json['preferred_language'] as String?,
       deliveryDate: asDateTime(json['delivery_date']),
-      latestVital: latestVital.isEmpty ? null : VitalReading.fromJson(latestVital),
+      latestVital:
+          latestVital.isEmpty ? null : VitalReading.fromJson(latestVital),
       deviceLastSeenAt: asDateTime(device['last_seen_at']),
     );
   }
@@ -114,7 +129,10 @@ class PatientSummary {
       id: id,
       name: name,
       medicalRecordNumber: medicalRecordNumber,
-      status: liveStatus == 'normal' || liveStatus == 'info' || liveStatus == 'warning' || liveStatus == 'critical'
+      status: liveStatus == 'normal' ||
+              liveStatus == 'info' ||
+              liveStatus == 'warning' ||
+              liveStatus == 'critical'
           ? liveStatus!
           : status,
       activeAlertCount: activeAlertCount,

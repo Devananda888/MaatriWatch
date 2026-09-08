@@ -3,12 +3,12 @@ import 'dart:convert';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 
+import 'runtime_config.dart';
+
 class PatientApi {
   PatientApi({http.Client? client, String? baseUrl})
       : _client = client ?? http.Client(),
-        _baseUrl = (baseUrl ??
-                const String.fromEnvironment('API_BASE_URL',
-                    defaultValue: 'http://localhost:8000/api/v1'))
+        _baseUrl = (baseUrl ?? PatientRuntimeConfig.apiUri.toString())
             .replaceFirst(RegExp(r'/$'), '');
 
   final http.Client _client;
@@ -41,8 +41,15 @@ class PatientApi {
           })
           ..body = body == null ? '' : jsonEncode(body))
         .then(http.Response.fromStream);
-    final decoded =
-        response.body.isEmpty ? <String, dynamic>{} : jsonDecode(response.body);
+    Object? decoded;
+    try {
+      decoded = response.body.isEmpty
+          ? <String, dynamic>{}
+          : jsonDecode(response.body);
+    } on FormatException {
+      throw const PatientApiException(
+          'The care service returned an invalid response. Please try again.');
+    }
     final value = decoded is Map
         ? Map<String, dynamic>.from(decoded)
         : <String, dynamic>{};

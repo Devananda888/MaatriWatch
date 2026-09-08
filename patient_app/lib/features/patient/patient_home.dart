@@ -5,15 +5,16 @@ import '../../core/patient_api.dart';
 
 /// Patient-facing safety companion. It routes concerns to care teams; it does not diagnose.
 class PatientHome extends StatefulWidget {
-  const PatientHome({super.key, this.api});
+  const PatientHome({super.key, this.api, this.onSignOut});
   final PatientApi? api;
+  final Future<void> Function()? onSignOut;
   @override
   State<PatientHome> createState() => _PatientHomeState();
 }
 
 class _PatientHomeState extends State<PatientHome> {
   final _fallbackApi = PatientApi();
-  Map<String, dynamic> _data = _demo;
+  Map<String, dynamic> _data = const {};
   Map<String, bool> _consents = {};
   int _page = 0;
   bool _busy = false;
@@ -149,17 +150,20 @@ class _PatientHomeState extends State<PatientHome> {
       Text('Latest readings', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 10),
       Wrap(spacing: 10, runSpacing: 10, children: [
-        _Vital('Heart rate', _n(vital['heart_rate_bpm'], 'bpm'),
+        _Vital('Wearable heart rate', _reading(vital, 'heart_rate_bpm', 'bpm'),
             Icons.favorite_outline, const Color(0xffC9546C)),
-        _Vital('Oxygen', _n(vital['spo2_percent'], '%'), Icons.air_rounded,
-            const Color(0xff317D9D)),
-        _Vital('Temperature', _n(vital['temperature_c'], '°C'),
-            Icons.thermostat_outlined, const Color(0xffD8863F)),
+        _Vital('Wearable oxygen (SpO₂)', _reading(vital, 'spo2_percent', '%'),
+            Icons.air_rounded, const Color(0xff317D9D)),
         _Vital(
-            'Blood pressure',
-            vital['systolic_bp'] == null
-                ? '—'
-                : '${vital['systolic_bp']}/${vital['diastolic_bp']}',
+            'Skin-adjacent temperature',
+            _reading(vital, 'skin_adjacent_temperature_c', '°C'),
+            Icons.thermostat_outlined,
+            const Color(0xffD8863F)),
+        _Vital(
+            'Blood pressure (validated cuff)',
+            vital['blood_pressure_source'] == 'validated_cuff' && _fresh(vital)
+                ? '${vital['systolic_bp']}/${vital['diastolic_bp']} mmHg'
+                : 'Not currently available',
             Icons.monitor_heart_outlined,
             const Color(0xff7062A6))
       ]),
@@ -171,7 +175,7 @@ class _PatientHomeState extends State<PatientHome> {
           : (_data['care_plan'] as List).first),
       const SizedBox(height: 16),
       Text(
-          'Your readings support your care team. They do not replace medical advice.',
+          'Wearable readings support your care team. They do not diagnose illness or replace medical advice.',
           style: Theme.of(context).textTheme.bodySmall),
     ]);
   }
@@ -268,9 +272,15 @@ class _PatientHomeState extends State<PatientHome> {
       _consent('Location during SOS', 'Share location only with an SOS request',
           'location', false),
       const SizedBox(height: 12),
+      if (widget.onSignOut != null)
+        OutlinedButton.icon(
+            onPressed: () async => widget.onSignOut!(),
+            icon: const Icon(Icons.logout_outlined),
+            label: const Text('Sign out')),
+      if (widget.onSignOut != null) const SizedBox(height: 8),
       OutlinedButton.icon(
           onPressed: () => _message(
-              'Ask your care team for a copy or correction of your health record.'),
+              'Your care team can help with a record copy or correction request.'),
           icon: const Icon(Icons.file_download_outlined),
           label: const Text('Request my data'))
     ]);
@@ -402,7 +412,23 @@ class _PatientHomeState extends State<PatientHome> {
   Map<String, dynamic> _map(Object? value) =>
       value is Map ? Map<String, dynamic>.from(value) : {};
   String _first(Object? name) => (name as String? ?? 'there').split(' ').first;
-  String _n(Object? v, String unit) => v is num ? '$v $unit' : '—';
+  String _reading(Map<String, dynamic> vital, String key, String unit) {
+    if (!_fresh(vital) || vital[key] is! num) return 'Not currently available';
+    return '${vital[key]} $unit';
+  }
+
+  bool _fresh(Map<String, dynamic> vital) {
+    if (vital['measurement_quality'] == 'unavailable' ||
+        vital['contact_detected'] == false) {
+      return false;
+    }
+    final raw = vital['captured_at'] ?? vital['observed_at'];
+    final captured = raw is String ? DateTime.tryParse(raw)?.toUtc() : null;
+    return captured != null &&
+        DateTime.now().toUtc().difference(captured) <=
+            const Duration(minutes: 10);
+  }
+
   String _days(Object? date) {
     final d = date is String ? DateTime.tryParse(date) : null;
     return d == null
@@ -538,53 +564,3 @@ class _SymptomsState extends State<_Symptoms> {
                         child: const Text('Send to care team')))
               ])));
 }
-
-const _demo = <String, dynamic>{
-  'patient': {
-    'full_name': 'Asha Nair',
-    'preferred_language': 'English',
-    'delivery_date': '2026-08-09',
-    'hospital_name': 'MaatriWatch Care Team',
-    'emergency_contact_name': 'Ravi Nair'
-  },
-  'latest_vital': {
-    'heart_rate_bpm': 82,
-    'spo2_percent': 98,
-    'temperature_c': 36.8,
-    'systolic_bp': 116,
-    'diastolic_bp': 74,
-    'battery_percent': 84
-  },
-  'device': {'serial_number': 'MW-1024'},
-  'care_plan': [
-    {
-      'id': 'demo',
-      'title': 'Complete your wellbeing check-in',
-      'detail': 'Tell your care team how you are feeling today.'
-    }
-  ],
-  'danger_signs': [
-    {
-      'title': 'Heavy bleeding',
-      'action':
-          'Get emergency care now if you soak a pad in an hour or pass large clots.'
-    },
-    {
-      'title': 'Trouble breathing or chest pain',
-      'action':
-          'Call emergency services or go to the nearest emergency department now.'
-    },
-    {
-      'title': 'Severe headache or vision change',
-      'action': 'Seek urgent medical assessment today.'
-    },
-    {
-      'title': 'Fever or feeling very unwell',
-      'action': 'Contact your care team urgently.'
-    },
-    {
-      'title': 'Thoughts of harming yourself or your baby',
-      'action': 'Get emergency help now. Do not stay alone.'
-    }
-  ]
-};

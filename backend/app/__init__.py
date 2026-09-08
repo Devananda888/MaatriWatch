@@ -24,6 +24,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.config.from_object(Config)
     if test_config:
         app.config.update(test_config)
+    if app.config.get("IS_PRODUCTION"):
+        errors = Config.production_configuration_errors()
+        if errors:
+            raise RuntimeError("Production configuration is incomplete: " + ", ".join(errors))
 
     init_db(app)
     init_firebase(app)
@@ -39,6 +43,9 @@ def create_app(test_config: dict | None = None) -> Flask:
         """Do not cache PHI, and permit only configured dashboard origins."""
         if request.path.startswith("/api/v1/"):
             response.headers["Cache-Control"] = "no-store, max-age=0"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["Referrer-Policy"] = "no-referrer"
+            response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         origin = request.headers.get("Origin", "").rstrip("/")
         if origin and origin in app.config.get("CORS_ALLOWED_ORIGINS", ()):
             response.headers["Access-Control-Allow-Origin"] = origin
@@ -51,6 +58,17 @@ def create_app(test_config: dict | None = None) -> Flask:
     @app.get("/healthz")
     def healthz():
         return jsonify({"service": "maatriwatch-api", "status": "ok"})
+
+    @app.get("/readyz")
+    def readyz():
+        missing = []
+        if not app.config.get("DATABASE_URL"):
+            missing.append("database")
+        if not (app.config.get("FIREBASE_AUTH_READY") or app.config.get("DEMO_MODE")):
+            missing.append("firebase_auth")
+        if missing:
+            return jsonify({"service": "maatriwatch-api", "status": "not_ready", "missing": missing}), 503
+        return jsonify({"service": "maatriwatch-api", "status": "ready"})
 
     @app.errorhandler(400)
     def bad_request(error):

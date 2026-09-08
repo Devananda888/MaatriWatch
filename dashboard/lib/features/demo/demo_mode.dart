@@ -19,41 +19,52 @@ class DemoRolePicker extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.favorite_rounded, color: MaatriTokens.primary, size: 52),
+                  const Icon(Icons.favorite_rounded,
+                      color: MaatriTokens.primary, size: 52),
                   const SizedBox(height: MaatriTokens.space16),
-                  Text('MaatriWatch demo', textAlign: TextAlign.center, style: Theme.of(context).textTheme.displaySmall),
+                  Text('MaatriWatch demo',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.displaySmall),
                   const SizedBox(height: MaatriTokens.space8),
                   Text(
                     'Choose a prototype role to begin. No password or OTP is needed for this hackathon demo.',
                     textAlign: TextAlign.center,
-                    style: MaatriTokens.type(size: MaatriTokens.type16, color: MaatriTokens.textMuted),
+                    style: MaatriTokens.type(
+                        size: MaatriTokens.type16,
+                        color: MaatriTokens.textMuted),
                   ),
                   const SizedBox(height: MaatriTokens.space32),
                   _RoleButton(
                     icon: Icons.medical_services_outlined,
                     title: 'Doctor',
                     subtitle: 'Review patients, trends, alerts, and notes',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _DemoClinicianGate())),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const _DemoClinicianGate())),
                   ),
                   const SizedBox(height: MaatriTokens.space12),
                   _RoleButton(
                     icon: Icons.favorite_outline_rounded,
                     title: 'Patient',
-                    subtitle: 'View simple vitals, use SOS, and complete a check-in',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PatientHome())),
+                    subtitle:
+                        'View simple vitals, use SOS, and complete a check-in',
+                    onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const PatientHome())),
                   ),
                   const SizedBox(height: MaatriTokens.space12),
                   _RoleButton(
                     icon: Icons.admin_panel_settings_outlined,
                     title: 'Hospital Admin',
                     subtitle: 'See a simple hospital and device overview',
-                    onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const _DemoAdminHome())),
+                    onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const _DemoAdminHome())),
                   ),
                   const SizedBox(height: MaatriTokens.space24),
                   Text(
                     'Demo mode is local to this prototype. Real Firebase Auth remains available when DEMO_MODE is disabled.',
                     textAlign: TextAlign.center,
-                    style: MaatriTokens.type(size: MaatriTokens.type12, color: MaatriTokens.textMuted),
+                    style: MaatriTokens.type(
+                        size: MaatriTokens.type12,
+                        color: MaatriTokens.textMuted),
                   ),
                 ],
               ),
@@ -64,7 +75,11 @@ class DemoRolePicker extends StatelessWidget {
 }
 
 class _RoleButton extends StatelessWidget {
-  const _RoleButton({required this.icon, required this.title, required this.subtitle, required this.onTap});
+  const _RoleButton(
+      {required this.icon,
+      required this.title,
+      required this.subtitle,
+      required this.onTap});
 
   final IconData icon;
   final String title;
@@ -93,13 +108,15 @@ class _RoleButton extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: Theme.of(context).textTheme.titleLarge),
+                      Text(title,
+                          style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: MaatriTokens.space4),
                       Text(subtitle),
                     ],
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios_rounded, color: MaatriTokens.textMuted),
+                const Icon(Icons.arrow_forward_ios_rounded,
+                    color: MaatriTokens.textMuted),
               ],
             ),
           ),
@@ -137,9 +154,12 @@ class _DemoClinicianGateState extends State<_DemoClinicianGate> {
         future: _memberships,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
-            return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            return const Scaffold(
+                body: Center(child: CircularProgressIndicator()));
           }
-          if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          if (snapshot.hasError ||
+              !snapshot.hasData ||
+              snapshot.data!.isEmpty) {
             return Scaffold(
               appBar: AppBar(title: const Text('Doctor demo')),
               body: Center(
@@ -148,11 +168,16 @@ class _DemoClinicianGateState extends State<_DemoClinicianGate> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.storage_outlined, color: MaatriTokens.warning, size: 44),
+                      const Icon(Icons.storage_outlined,
+                          color: MaatriTokens.warning, size: 44),
                       const SizedBox(height: MaatriTokens.space16),
-                      const Text('Demo data is not available. Follow the seed step in the root README, then retry.'),
+                      const Text(
+                          'Demo data is not available. Follow the seed step in the root README, then retry.'),
                       const SizedBox(height: MaatriTokens.space16),
-                      OutlinedButton(onPressed: () => setState(() => _memberships = _load()), child: const Text('Retry')),
+                      OutlinedButton(
+                          onPressed: () =>
+                              setState(() => _memberships = _load()),
+                          child: const Text('Retry')),
                     ],
                   ),
                 ),
@@ -179,15 +204,26 @@ class _DemoAdminHome extends StatelessWidget {
           padding: const EdgeInsets.all(MaatriTokens.space16),
           child: ListView(
             children: [
-              Text('Demo hospital overview', style: Theme.of(context).textTheme.headlineSmall),
+              Text('Demo hospital overview',
+                  style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: MaatriTokens.space16),
-              const _AdminMetric(label: 'Active patients', value: '8', icon: Icons.people_outline),
+              const _AdminMetric(
+                  label: 'Active patients',
+                  value: '8',
+                  icon: Icons.people_outline),
               const SizedBox(height: MaatriTokens.space12),
-              const _AdminMetric(label: 'Devices assigned', value: '8', icon: Icons.watch_outlined),
+              const _AdminMetric(
+                  label: 'Devices assigned',
+                  value: '8',
+                  icon: Icons.watch_outlined),
               const SizedBox(height: MaatriTokens.space12),
-              const _AdminMetric(label: 'Alerts needing review', value: '2', icon: Icons.notifications_active_outlined),
+              const _AdminMetric(
+                  label: 'Alerts needing review',
+                  value: '2',
+                  icon: Icons.notifications_active_outlined),
               const SizedBox(height: MaatriTokens.space24),
-              const Text('This prototype view is intentionally static. Account and device management are on the roadmap.'),
+              const Text(
+                  'This prototype view is intentionally static. Account and device management are on the roadmap.'),
             ],
           ),
         ),
@@ -195,7 +231,8 @@ class _DemoAdminHome extends StatelessWidget {
 }
 
 class _AdminMetric extends StatelessWidget {
-  const _AdminMetric({required this.label, required this.value, required this.icon});
+  const _AdminMetric(
+      {required this.label, required this.value, required this.icon});
 
   final String label;
   final String value;
@@ -206,7 +243,8 @@ class _AdminMetric extends StatelessWidget {
         child: ListTile(
           leading: Icon(icon, color: MaatriTokens.primary),
           title: Text(label),
-          trailing: Text(value, style: Theme.of(context).textTheme.headlineSmall),
+          trailing:
+              Text(value, style: Theme.of(context).textTheme.headlineSmall),
         ),
       );
 }

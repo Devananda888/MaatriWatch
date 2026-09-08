@@ -16,6 +16,7 @@ from psycopg.types.json import Jsonb
 
 from .auth import require_hospital_role
 from .db import get_db
+from .measurements import public_vital
 from .outbox import deliver_outbox_ids, enqueue_projection
 
 clinician_bp = Blueprint("clinician", __name__)
@@ -217,9 +218,12 @@ def patients(hospital_id: str):
             f"""SELECT p.id, p.medical_record_number, p.full_name, p.preferred_language,
                        p.delivery_date, latest_vital.captured_at AS latest_captured_at,
                        latest_vital.heart_rate_bpm, latest_vital.spo2_percent,
-                       latest_vital.temperature_c, latest_vital.ambient_temperature_c,
+                       latest_vital.temperature_c, latest_vital.temperature_source,
+                       latest_vital.ambient_temperature_c,
                        latest_vital.ambient_humidity_percent, latest_vital.systolic_bp,
-                       latest_vital.diastolic_bp, device.id AS device_id,
+                       latest_vital.diastolic_bp, latest_vital.blood_pressure_source,
+                       latest_vital.contact_detected, latest_vital.signal_quality,
+                       latest_vital.sensor_status, device.id AS device_id,
                        device.serial_number AS device_serial_number,
                        device.last_seen_at AS device_last_seen_at,
                        COALESCE(active.active_alert_count, 0) AS active_alert_count,
@@ -227,8 +231,10 @@ def patients(hospital_id: str):
                 FROM patients p
                 LEFT JOIN LATERAL (
                     SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c,
+                           temperature_source,
                            ambient_temperature_c, ambient_humidity_percent,
-                           systolic_bp, diastolic_bp
+                           systolic_bp, diastolic_bp, blood_pressure_source,
+                           contact_detected, signal_quality, sensor_status
                     FROM vital_readings
                     WHERE hospital_id = p.hospital_id AND patient_id = p.id
                     ORDER BY captured_at DESC, id DESC LIMIT 1
@@ -269,16 +275,23 @@ def patients(hospital_id: str):
                 "status": highest or "normal",
                 "active_alert_count": value["active_alert_count"],
                 "latest_vital": _wire(
-                    {
+                    public_vital(
+                        {
                         "captured_at": value["latest_captured_at"],
                         "heart_rate_bpm": value["heart_rate_bpm"],
                         "spo2_percent": value["spo2_percent"],
                         "temperature_c": value["temperature_c"],
+                        "temperature_source": value["temperature_source"],
                         "ambient_temperature_c": value["ambient_temperature_c"],
                         "ambient_humidity_percent": value["ambient_humidity_percent"],
                         "systolic_bp": value["systolic_bp"],
                         "diastolic_bp": value["diastolic_bp"],
-                    }
+                        "blood_pressure_source": value["blood_pressure_source"],
+                        "contact_detected": value["contact_detected"],
+                        "signal_quality": value["signal_quality"],
+                        "sensor_status": value["sensor_status"],
+                        }
+                    )
                     if value["latest_captured_at"]
                     else None
                 ),
@@ -309,7 +322,9 @@ def patient_detail(hospital_id: str, patient_id: str):
     with connection.cursor() as cursor:
         patient = _patient_or_404(cursor, hospital_uuid, patient_uuid)
         cursor.execute(
-            """SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c,
+            """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent, temperature_c,
+                      temperature_source, blood_pressure_source, contact_detected,
+                      signal_quality, sensor_status,
                       ambient_temperature_c, ambient_humidity_percent,
                       systolic_bp, diastolic_bp, battery_percent, blood_loss_ml,
                       bleeding_reported, motion
@@ -351,7 +366,7 @@ def patient_detail(hospital_id: str, patient_id: str):
         {
             "patient": _row(patient),
             "status": highest,
-            "latest_vital": _row(latest_vital),
+            "latest_vital": _wire(public_vital(latest_vital)),
             "device": _row(device),
             "active_alerts": _wire(active_alerts),
             "latest_screening": _row(latest_screening),
@@ -388,7 +403,9 @@ def patient_vitals(hospital_id: str, patient_id: str):
         _patient_or_404(cursor, hospital_uuid, patient_uuid)
         if resolution == "raw":
             cursor.execute(
-                """SELECT captured_at, heart_rate_bpm, spo2_percent, temperature_c,
+                """SELECT captured_at, observed_at, received_at, heart_rate_bpm, spo2_percent, temperature_c,
+                          temperature_source, blood_pressure_source, contact_detected,
+                          signal_quality, sensor_status,
                           ambient_temperature_c, ambient_humidity_percent,
                           systolic_bp, diastolic_bp, battery_percent, blood_loss_ml
                    FROM vital_readings
@@ -429,7 +446,7 @@ def patient_vitals(hospital_id: str, patient_id: str):
             "from": _wire(start),
             "to": _wire(end),
             "resolution": resolution,
-            "items": _wire(readings),
+            "items": _wire([public_vital(reading) for reading in readings]),
             "limited": len(readings) == limit,
         }
     )

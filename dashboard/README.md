@@ -5,6 +5,9 @@ email/password authentication, Flask for authoritative patient records and
 actions, and Firebase RTDB only for live vital/alert overlays. The browser
 never receives a Firebase service-account credential and never writes RTDB.
 
+The deployed dashboard blocks startup if its API URL is absent, invalid, or
+non-HTTPS. DEMO_MODE is not permitted in a release build.
+
 ## Run locally
 
 Install a current Flutter SDK, then from this directory run:

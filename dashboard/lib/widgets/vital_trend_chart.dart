@@ -26,7 +26,11 @@ extension VitalMetricLabel on VitalMetric {
         VitalMetric.heartRate => item.heartRate,
         VitalMetric.spo2 => item.spo2,
         VitalMetric.temperature => item.ambientTemperature,
-        VitalMetric.systolic => item.systolic,
+        VitalMetric.systolic => item.bloodPressureSource == 'validated_cuff' ||
+                item.bloodPressureSource == 'external_validated_device' ||
+                item.bloodPressureSource == 'clinician_entered'
+            ? item.systolic
+            : null,
       };
 }
 
@@ -46,7 +50,8 @@ class VitalTrendChart extends StatelessWidget {
     if (points.isEmpty) {
       return const SizedBox(
         height: 240,
-        child: Center(child: Text('No readings are available for this period.')),
+        child:
+            Center(child: Text('No readings are available for this period.')),
       );
     }
     final minY = points.map((point) => point.y).reduce((a, b) => a < b ? a : b);
@@ -66,15 +71,18 @@ class VitalTrendChart extends StatelessWidget {
                   .map(
                     (spot) => LineTooltipItem(
                       '${spot.y.toStringAsFixed(1)} ${metric.unit}\n${_labelFor(spot.x.toInt())}',
-                      MaatriTokens.type(size: MaatriTokens.type12, color: Colors.white),
+                      MaatriTokens.type(
+                          size: MaatriTokens.type12, color: Colors.white),
                     ),
                   )
                   .toList(),
             ),
           ),
           titlesData: FlTitlesData(
-            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
@@ -89,7 +97,9 @@ class VitalTrendChart extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 28,
-                interval: (points.length / 3).ceilToDouble().clamp(1, double.infinity),
+                interval: (points.length / 3)
+                    .ceilToDouble()
+                    .clamp(1, double.infinity),
                 getTitlesWidget: (value, _) => Padding(
                   padding: const EdgeInsets.only(top: MaatriTokens.space4),
                   child: Text(
@@ -107,7 +117,9 @@ class VitalTrendChart extends StatelessWidget {
               color: MaatriTokens.primary,
               barWidth: 3,
               dotData: const FlDotData(show: false),
-              belowBarData: BarAreaData(show: true, color: MaatriTokens.primary.withValues(alpha: 0.1)),
+              belowBarData: BarAreaData(
+                  show: true,
+                  color: MaatriTokens.primary.withValues(alpha: 0.1)),
             ),
           ],
         ),
@@ -116,7 +128,9 @@ class VitalTrendChart extends StatelessWidget {
   }
 
   String _labelFor(int index) {
-    if (index < 0 || index >= items.length || items[index].capturedAt == null) return '';
+    if (index < 0 || index >= items.length || items[index].capturedAt == null) {
+      return '';
+    }
     return DateFormat('HH:mm').format(items[index].capturedAt!);
   }
 }

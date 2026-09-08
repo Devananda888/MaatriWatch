@@ -87,6 +87,12 @@ def _evaluate_sos(reading: Mapping[str, Any]) -> list[AlertCandidate]:
 
 
 def _evaluate_postpartum_hypertension(reading: Mapping[str, Any]) -> list[AlertCandidate]:
+    if reading.get("blood_pressure_source") not in {
+        "validated_cuff",
+        "external_validated_device",
+        "clinician_entered",
+    }:
+        return []
     systolic = reading.get("systolic_bp")
     diastolic = reading.get("diastolic_bp")
     if systolic is None and diastolic is None:
@@ -135,7 +141,12 @@ def _evaluate_postpartum_hemorrhage(reading: Mapping[str, Any]) -> list[AlertCan
 
     policy = POLICY["postpartum_hemorrhage"]
     heart_rate = reading.get("heart_rate_bpm")
-    systolic = reading.get("systolic_bp")
+    systolic = (
+        reading.get("systolic_bp")
+        if reading.get("blood_pressure_source")
+        in {"validated_cuff", "external_validated_device", "clinician_entered"}
+        else None
+    )
     shock_index = heart_rate / systolic if heart_rate is not None and systolic not in (None, 0) else None
     abnormal_vitals = (
         (heart_rate is not None and heart_rate >= policy["tachycardia_bpm"])

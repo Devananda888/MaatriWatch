@@ -10,7 +10,11 @@ import 'features/dashboard/dashboard_page.dart';
 import 'features/demo/demo_mode.dart';
 
 class MaatriWatchApp extends StatelessWidget {
-  const MaatriWatchApp({super.key, required this.firebaseReady, required this.demoMode, this.initializationError});
+  const MaatriWatchApp(
+      {super.key,
+      required this.firebaseReady,
+      required this.demoMode,
+      this.initializationError});
 
   final bool firebaseReady;
   final bool demoMode;
@@ -24,17 +28,19 @@ class MaatriWatchApp extends StatelessWidget {
         home: demoMode
             ? const DemoRolePicker()
             : !firebaseReady
-            ? _UnavailableHome(message: initializationError)
-            : StreamBuilder<User?>(
-                stream: FirebaseAuth.instance.authStateChanges(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const _LoadingScreen();
-                  }
-                  if (snapshot.data == null) return const LoginPage(firebaseConfigured: true);
-                  return _ClinicianGate(key: ValueKey(snapshot.data!.uid));
-                },
-              ),
+                ? _UnavailableHome(message: initializationError)
+                : StreamBuilder<User?>(
+                    stream: FirebaseAuth.instance.authStateChanges(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const _LoadingScreen();
+                      }
+                      if (snapshot.data == null) {
+                        return const LoginPage(firebaseConfigured: true);
+                      }
+                      return _ClinicianGate(key: ValueKey(snapshot.data!.uid));
+                    },
+                  ),
       );
 }
 
@@ -67,13 +73,16 @@ class _ClinicianGateState extends State<_ClinicianGate> {
   Widget build(BuildContext context) => FutureBuilder<List<HospitalMembership>>(
         future: _membershipRequest,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) return const _LoadingScreen();
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const _LoadingScreen();
+          }
           if (snapshot.hasError) {
             return _RetryScreen(
               message: snapshot.error is ApiException
                   ? (snapshot.error as ApiException).message
                   : 'We could not load your hospital access. Check your connection and try again.',
-              onRetry: () => setState(() => _membershipRequest = _loadMemberships()),
+              onRetry: () =>
+                  setState(() => _membershipRequest = _loadMemberships()),
             );
           }
           if (snapshot.data!.isEmpty) return const _NoClinicianAccess();
@@ -90,7 +99,8 @@ class _LoadingScreen extends StatelessWidget {
   const _LoadingScreen();
 
   @override
-  Widget build(BuildContext context) => const Scaffold(body: Center(child: CircularProgressIndicator()));
+  Widget build(BuildContext context) =>
+      const Scaffold(body: Center(child: CircularProgressIndicator()));
 }
 
 class _UnavailableHome extends StatelessWidget {
@@ -108,7 +118,8 @@ class _UnavailableHome extends StatelessWidget {
               child: Card(
                 child: Padding(
                   padding: const EdgeInsets.all(MaatriTokens.space24),
-                  child: Text(message ?? 'Firebase web configuration is required. See dashboard/README.md.'),
+                  child: Text(message ??
+                      'Firebase web configuration is required. See dashboard/README.md.'),
                 ),
               ),
             ),
@@ -136,11 +147,13 @@ class _RetryScreen extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.cloud_off_outlined, color: MaatriTokens.warning, size: 40),
+                      const Icon(Icons.cloud_off_outlined,
+                          color: MaatriTokens.warning, size: 40),
                       const SizedBox(height: MaatriTokens.space16),
                       Text(message, textAlign: TextAlign.center),
                       const SizedBox(height: MaatriTokens.space16),
-                      OutlinedButton(onPressed: onRetry, child: const Text('Try again')),
+                      OutlinedButton(
+                          onPressed: onRetry, child: const Text('Try again')),
                     ],
                   ),
                 ),
@@ -167,9 +180,12 @@ class _NoClinicianAccess extends StatelessWidget {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.lock_outline_rounded, color: MaatriTokens.warning, size: 40),
+                      const Icon(Icons.lock_outline_rounded,
+                          color: MaatriTokens.warning, size: 40),
                       const SizedBox(height: MaatriTokens.space16),
-                      const Text('Clinician access is not assigned to this account.', textAlign: TextAlign.center),
+                      const Text(
+                          'Clinician access is not assigned to this account.',
+                          textAlign: TextAlign.center),
                       const SizedBox(height: MaatriTokens.space16),
                       OutlinedButton(
                         onPressed: FirebaseAuth.instance.signOut,

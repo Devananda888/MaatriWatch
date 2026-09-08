@@ -6,24 +6,34 @@ from app.firebase import _is_newer, _is_newer_alert
 
 class AlertRuleTest(unittest.TestCase):
     def test_severe_bp_is_a_critical_hypertension_risk_signal(self):
-        alerts = evaluate_alerts({"systolic_bp": 165, "diastolic_bp": 95})
+        alerts = evaluate_alerts(
+            {"systolic_bp": 165, "diastolic_bp": 95, "blood_pressure_source": "validated_cuff"}
+        )
         self.assertEqual(len(alerts), 1)
         self.assertEqual(alerts[0].rule_id, "postpartum_hypertension_risk")
         self.assertEqual(alerts[0].severity, "critical")
 
     def test_elevated_bp_is_warning_not_a_preeclampsia_diagnosis(self):
-        alerts = evaluate_alerts({"systolic_bp": 142, "diastolic_bp": 88})
+        alerts = evaluate_alerts(
+            {"systolic_bp": 142, "diastolic_bp": 88, "blood_pressure_source": "validated_cuff"}
+        )
         self.assertEqual(len(alerts), 1)
         self.assertEqual(alerts[0].rule_id, "postpartum_hypertension_risk")
         self.assertEqual(alerts[0].severity, "warning")
 
     def test_vitals_without_a_bleeding_signal_do_not_claim_pph(self):
-        alerts = evaluate_alerts({"heart_rate_bpm": 120, "systolic_bp": 85})
+        alerts = evaluate_alerts({"heart_rate_bpm": 120, "systolic_bp": 85, "blood_pressure_source": "validated_cuff"})
         self.assertFalse(any(alert.rule_id == "postpartum_hemorrhage_risk" for alert in alerts))
 
     def test_reported_bleeding_plus_instability_creates_pph_risk(self):
         alerts = evaluate_alerts(
-            {"blood_loss_ml": 350, "heart_rate_bpm": 110, "systolic_bp": 90, "bleeding_reported": True}
+            {
+                "blood_loss_ml": 350,
+                "heart_rate_bpm": 110,
+                "systolic_bp": 90,
+                "blood_pressure_source": "validated_cuff",
+                "bleeding_reported": True,
+            }
         )
         pph_alert = next(alert for alert in alerts if alert.rule_id == "postpartum_hemorrhage_risk")
         self.assertEqual(pph_alert.severity, "critical")
@@ -47,8 +57,18 @@ class AlertRuleTest(unittest.TestCase):
         self.assertEqual(alerts[0].rule_id, "fall_detected")
 
     def test_highest_severity_uses_explicit_order(self):
-        alerts = evaluate_alerts({"systolic_bp": 165, "motion": {"fall_detected": True}})
+        alerts = evaluate_alerts(
+            {
+                "systolic_bp": 165,
+                "blood_pressure_source": "validated_cuff",
+                "motion": {"fall_detected": True},
+            }
+        )
         self.assertEqual(highest_severity(alerts), "critical")
+
+    def test_unprovenanced_bp_is_not_evaluated_as_clinical_bp(self):
+        alerts = evaluate_alerts({"systolic_bp": 190, "diastolic_bp": 120})
+        self.assertFalse(any(alert.rule_id == "postpartum_hypertension_risk" for alert in alerts))
 
 
 class FirebaseProjectionOrderingTest(unittest.TestCase):

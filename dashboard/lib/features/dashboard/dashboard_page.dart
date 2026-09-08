@@ -96,7 +96,8 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _error = 'We could not refresh the dashboard. Check your connection and try again.';
+        _error =
+            'We could not refresh the dashboard. Check your connection and try again.';
         _loading = false;
         _refreshing = false;
       });
@@ -108,19 +109,26 @@ class _DashboardPageState extends State<DashboardPage> {
     _alertsSubscription?.cancel();
     _demoPollingTimer?.cancel();
     if (widget.demoMode) {
-      _demoPollingTimer = Timer.periodic(const Duration(seconds: 2), (_) => _pollDemoLiveState());
+      _demoPollingTimer = Timer.periodic(
+          const Duration(seconds: 2), (_) => _pollDemoLiveState());
       return;
     }
     _vitalsSubscription = _realtime.liveVitals(_hospital.hospitalId).listen(
       _mergeLiveVitals,
       onError: (_) {
-        if (mounted) setState(() => _liveStatus = 'Live updates are unavailable. Showing the last loaded data.');
+        if (mounted) {
+          setState(() => _liveStatus =
+              'Live updates are unavailable. Showing the last loaded data.');
+        }
       },
     );
     _alertsSubscription = _realtime.liveAlerts(_hospital.hospitalId).listen(
       _mergeLiveAlerts,
       onError: (_) {
-        if (mounted) setState(() => _liveStatus = 'Live alerts are unavailable. Use Refresh when connected.');
+        if (mounted) {
+          setState(() => _liveStatus =
+              'Live alerts are unavailable. Use Refresh when connected.');
+        }
       },
     );
   }
@@ -135,7 +143,9 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       final remotePatients = values[0] as List<PatientSummary>;
       final remoteAlerts = values[1] as List<AlertItem>;
-      final patientById = {for (final patient in remotePatients) patient.id: patient};
+      final patientById = {
+        for (final patient in remotePatients) patient.id: patient
+      };
       final alertById = {for (final alert in remoteAlerts) alert.id: alert};
       final knownPatientIds = _patients.map((patient) => patient.id).toSet();
       final knownAlertIds = _alerts.map((alert) => alert.id).toSet();
@@ -144,16 +154,22 @@ class _DashboardPageState extends State<DashboardPage> {
         // update an existing row in place and append only genuinely new records.
         _patients = [
           ..._patients.map((patient) => patientById[patient.id] ?? patient),
-          ...remotePatients.where((patient) => !knownPatientIds.contains(patient.id)),
+          ...remotePatients
+              .where((patient) => !knownPatientIds.contains(patient.id)),
         ];
         _alerts = [
-          ..._alerts.where((alert) => alertById.containsKey(alert.id)).map((alert) => alertById[alert.id]!),
+          ..._alerts
+              .where((alert) => alertById.containsKey(alert.id))
+              .map((alert) => alertById[alert.id]!),
           ...remoteAlerts.where((alert) => !knownAlertIds.contains(alert.id)),
         ];
         _hasLiveUpdates = true;
       });
     } catch (_) {
-      if (mounted) setState(() => _liveStatus = 'Live demo polling paused. Use Refresh when the API is available.');
+      if (mounted) {
+        setState(() => _liveStatus =
+            'Live demo polling paused. Use Refresh when the API is available.');
+      }
     }
   }
 
@@ -191,7 +207,8 @@ class _DashboardPageState extends State<DashboardPage> {
         changed = byId.remove(incoming.id) != null || changed;
         continue;
       }
-      final patientName = existing?.patientName ?? _patientName(incoming.patientId);
+      final patientName =
+          existing?.patientName ?? _patientName(incoming.patientId);
       byId[incoming.id] = AlertItem(
         id: incoming.id,
         patientId: incoming.patientId,
@@ -211,8 +228,12 @@ class _DashboardPageState extends State<DashboardPage> {
       // Retain existing queue order. New live alerts append rather than stealing focus.
       final existingIds = _alerts.map((item) => item.id).toSet();
       final ordered = <AlertItem>[
-        ..._alerts.where((item) => byId.containsKey(item.id)).map((item) => byId[item.id]!),
-        ...byId.entries.where((entry) => !existingIds.contains(entry.key)).map((entry) => entry.value),
+        ..._alerts
+            .where((item) => byId.containsKey(item.id))
+            .map((item) => byId[item.id]!),
+        ...byId.entries
+            .where((entry) => !existingIds.contains(entry.key))
+            .map((entry) => entry.value),
       ];
       setState(() {
         _alerts = ordered;
@@ -266,7 +287,9 @@ class _DashboardPageState extends State<DashboardPage> {
       if (!mounted) return;
       setState(() {
         if (updated.status == 'resolved') {
-          _alerts = _alerts.where((item) => item.id != updated.id).toList(growable: false);
+          _alerts = _alerts
+              .where((item) => item.id != updated.id)
+              .toList(growable: false);
         } else {
           _alerts = _alerts
               .map((item) => item.id == updated.id
@@ -287,9 +310,13 @@ class _DashboardPageState extends State<DashboardPage> {
               .toList(growable: false);
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Alert ${action}d.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Alert ${action}d.')));
     } on ApiException catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.message)));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
     }
   }
 
@@ -306,20 +333,27 @@ class _DashboardPageState extends State<DashboardPage> {
           minLines: 3,
           maxLines: 6,
           maxLength: 5000,
-          decoration: const InputDecoration(hintText: 'Briefly record the clinical handoff or outcome.'),
+          decoration: const InputDecoration(
+              hintText: 'Briefly record the clinical handoff or outcome.'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel')),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: Text(action == 'resolve' ? 'Resolve alert' : 'Escalate alert'),
+            child:
+                Text(action == 'resolve' ? 'Resolve alert' : 'Escalate alert'),
           ),
         ],
       ),
     );
     controller.dispose();
     if (result == null || result.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A clinical note is required.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('A clinical note is required.')));
+      }
       return null;
     }
     return result;
@@ -339,7 +373,8 @@ class _DashboardPageState extends State<DashboardPage> {
         onRefresh: () => _load(manual: true),
         onPatientSelected: (patient) => Navigator.of(context).push(
           MaterialPageRoute(
-            builder: (_) => PatientDetailPage(api: widget.api, hospital: _hospital, patient: patient),
+            builder: (_) => PatientDetailPage(
+                api: widget.api, hospital: _hospital, patient: patient),
           ),
         ),
       ),
@@ -370,7 +405,8 @@ class _DashboardPageState extends State<DashboardPage> {
                       .map(
                         (item) => DropdownMenuItem(
                           value: item,
-                          child: Text(item.hospitalName, overflow: TextOverflow.ellipsis),
+                          child: Text(item.hospitalName,
+                              overflow: TextOverflow.ellipsis),
                         ),
                       )
                       .toList(growable: false),
@@ -393,8 +429,10 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
       body: Column(
         children: [
-          if (_error != null) _DashboardBanner(message: _error!, critical: false),
-          if (_liveStatus != null) _DashboardBanner(message: _liveStatus!, critical: false),
+          if (_error != null)
+            _DashboardBanner(message: _error!, critical: false),
+          if (_liveStatus != null)
+            _DashboardBanner(message: _liveStatus!, critical: false),
           Expanded(
             child: Row(
               children: [
@@ -402,10 +440,17 @@ class _DashboardPageState extends State<DashboardPage> {
                   NavigationRail(
                     selectedIndex: _tab,
                     labelType: NavigationRailLabelType.all,
-                    onDestinationSelected: (index) => setState(() => _tab = index),
+                    onDestinationSelected: (index) =>
+                        setState(() => _tab = index),
                     destinations: const [
-                      NavigationRailDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: Text('Patients')),
-                      NavigationRailDestination(icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: Text('Alerts')),
+                      NavigationRailDestination(
+                          icon: Icon(Icons.people_outline),
+                          selectedIcon: Icon(Icons.people),
+                          label: Text('Patients')),
+                      NavigationRailDestination(
+                          icon: Icon(Icons.notifications_none),
+                          selectedIcon: Icon(Icons.notifications),
+                          label: Text('Alerts')),
                     ],
                   ),
                 Expanded(child: pages[_tab]),
@@ -420,8 +465,14 @@ class _DashboardPageState extends State<DashboardPage> {
               selectedIndex: _tab,
               onDestinationSelected: (index) => setState(() => _tab = index),
               destinations: const [
-                NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Patients'),
-                NavigationDestination(icon: Icon(Icons.notifications_none), selectedIcon: Icon(Icons.notifications), label: 'Alerts'),
+                NavigationDestination(
+                    icon: Icon(Icons.people_outline),
+                    selectedIcon: Icon(Icons.people),
+                    label: 'Patients'),
+                NavigationDestination(
+                    icon: Icon(Icons.notifications_none),
+                    selectedIcon: Icon(Icons.notifications),
+                    label: 'Alerts'),
               ],
             ),
     );
@@ -464,8 +515,10 @@ class _PatientsPane extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Patients', style: Theme.of(context).textTheme.headlineSmall),
-                    Text('${patients.length} assigned to this hospital', style: Theme.of(context).textTheme.bodySmall),
+                    Text('Patients',
+                        style: Theme.of(context).textTheme.headlineSmall),
+                    Text('${patients.length} assigned to this hospital',
+                        style: Theme.of(context).textTheme.bodySmall),
                   ],
                 ),
                 Row(
@@ -474,9 +527,12 @@ class _PatientsPane extends StatelessWidget {
                     DropdownButton<String>(
                       value: sort,
                       items: const [
-                        DropdownMenuItem(value: 'risk', child: Text('Sort: risk')),
-                        DropdownMenuItem(value: 'recent', child: Text('Sort: recent')),
-                        DropdownMenuItem(value: 'name', child: Text('Sort: name')),
+                        DropdownMenuItem(
+                            value: 'risk', child: Text('Sort: risk')),
+                        DropdownMenuItem(
+                            value: 'recent', child: Text('Sort: recent')),
+                        DropdownMenuItem(
+                            value: 'name', child: Text('Sort: name')),
                       ],
                       onChanged: (value) {
                         if (value != null) onSortChanged(value);
@@ -486,7 +542,9 @@ class _PatientsPane extends StatelessWidget {
                     IconButton(
                       tooltip: 'Refresh list',
                       onPressed: refreshing ? null : onRefresh,
-                      icon: refreshing ? const CircularProgressIndicator(strokeWidth: 2) : const Icon(Icons.refresh_rounded),
+                      icon: refreshing
+                          ? const CircularProgressIndicator(strokeWidth: 2)
+                          : const Icon(Icons.refresh_rounded),
                     ),
                   ],
                 ),
@@ -501,12 +559,16 @@ class _PatientsPane extends StatelessWidget {
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : patients.isEmpty
-                      ? const _EmptyPanel(icon: Icons.people_outline, message: 'No active patients are available in this hospital.')
+                      ? const _EmptyPanel(
+                          icon: Icons.people_outline,
+                          message:
+                              'No active patients are available in this hospital.')
                       : Card(
                           clipBehavior: Clip.antiAlias,
                           child: ListView.separated(
                             itemCount: patients.length,
-                            separatorBuilder: (context, index) => const Divider(height: 1),
+                            separatorBuilder: (context, index) =>
+                                const Divider(height: 1),
                             itemBuilder: (context, index) => _PatientRow(
                               key: ValueKey(patients[index].id),
                               patient: patients[index],
@@ -531,9 +593,11 @@ class _PatientRow extends StatelessWidget {
     final heartRate = patient.latestVital?.heartRate;
     final time = patient.latestVital?.capturedAt;
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: MaatriTokens.space16, vertical: MaatriTokens.space8),
+      contentPadding: const EdgeInsets.symmetric(
+          horizontal: MaatriTokens.space16, vertical: MaatriTokens.space8),
       leading: CircleAvatar(
-        backgroundColor: MaatriTokens.statusColor(patient.status).withValues(alpha: 0.12),
+        backgroundColor:
+            MaatriTokens.statusColor(patient.status).withValues(alpha: 0.12),
         foregroundColor: MaatriTokens.statusColor(patient.status),
         child: const Icon(Icons.person_outline_rounded),
       ),
@@ -550,7 +614,9 @@ class _PatientRow extends StatelessWidget {
             if (patient.activeAlertCount > 0)
               Padding(
                 padding: const EdgeInsets.only(right: MaatriTokens.space8),
-                child: Semantics(label: '${patient.activeAlertCount} active alerts', child: Text('${patient.activeAlertCount}')),
+                child: Semantics(
+                    label: '${patient.activeAlertCount} active alerts',
+                    child: Text('${patient.activeAlertCount}')),
               ),
             StatusChip(status: patient.status, compact: true),
           ],
@@ -584,11 +650,15 @@ class _AlertQueuePane extends StatelessWidget {
           children: [
             Row(
               children: [
-                Expanded(child: Text('Alert queue', style: Theme.of(context).textTheme.headlineSmall)),
+                Expanded(
+                    child: Text('Alert queue',
+                        style: Theme.of(context).textTheme.headlineSmall)),
                 IconButton(
                   tooltip: 'Refresh alerts',
                   onPressed: refreshing ? null : onRefresh,
-                  icon: refreshing ? const CircularProgressIndicator(strokeWidth: 2) : const Icon(Icons.refresh_rounded),
+                  icon: refreshing
+                      ? const CircularProgressIndicator(strokeWidth: 2)
+                      : const Icon(Icons.refresh_rounded),
                 ),
               ],
             ),
@@ -597,11 +667,15 @@ class _AlertQueuePane extends StatelessWidget {
               child: loading
                   ? const Center(child: CircularProgressIndicator())
                   : alerts.isEmpty
-                      ? const _EmptyPanel(icon: Icons.notifications_off_outlined, message: 'No active alerts. Continue routine review.')
+                      ? const _EmptyPanel(
+                          icon: Icons.notifications_off_outlined,
+                          message: 'No active alerts. Continue routine review.')
                       : ListView.separated(
                           itemCount: alerts.length,
-                          separatorBuilder: (context, index) => const SizedBox(height: MaatriTokens.space12),
-                          itemBuilder: (context, index) => _AlertCard(alert: alerts[index], onAction: onAction),
+                          separatorBuilder: (context, index) =>
+                              const SizedBox(height: MaatriTokens.space12),
+                          itemBuilder: (context, index) => _AlertCard(
+                              alert: alerts[index], onAction: onAction),
                         ),
             ),
           ],
@@ -628,60 +702,62 @@ class _AlertCard extends StatelessWidget {
           ),
         ),
         child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(MaatriTokens.space16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: MaatriTokens.space8,
-                runSpacing: MaatriTokens.space8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  StatusChip(status: alert.severity),
-                  StatusChip(status: alert.status),
-                  Text(alert.patientName ?? 'Patient record', style: Theme.of(context).textTheme.titleMedium),
-                ],
-              ),
-              const SizedBox(height: MaatriTokens.space12),
-              Text(alert.type, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: MaatriTokens.space4),
-              Text(alert.message),
-              const SizedBox(height: MaatriTokens.space8),
-              Text(
-                '${alert.occurrenceCount} occurrence${alert.occurrenceCount == 1 ? '' : 's'}'
-                '${alert.lastSeenAt == null ? '' : '  •  last seen ${DateFormat('d MMM, HH:mm').format(alert.lastSeenAt!)}'}',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: MaatriTokens.space16),
-              Wrap(
-                spacing: MaatriTokens.space8,
-                runSpacing: MaatriTokens.space8,
-                children: [
-                  if (alert.status == 'open')
-                    OutlinedButton.icon(
-                      onPressed: () => onAction(alert, 'acknowledge'),
-                      icon: const Icon(Icons.visibility_rounded),
-                      label: const Text('Acknowledge'),
+          child: Padding(
+            padding: const EdgeInsets.all(MaatriTokens.space16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: MaatriTokens.space8,
+                  runSpacing: MaatriTokens.space8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    StatusChip(status: alert.severity),
+                    StatusChip(status: alert.status),
+                    Text(alert.patientName ?? 'Patient record',
+                        style: Theme.of(context).textTheme.titleMedium),
+                  ],
+                ),
+                const SizedBox(height: MaatriTokens.space12),
+                Text(alert.type,
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: MaatriTokens.space4),
+                Text(alert.message),
+                const SizedBox(height: MaatriTokens.space8),
+                Text(
+                  '${alert.occurrenceCount} occurrence${alert.occurrenceCount == 1 ? '' : 's'}'
+                  '${alert.lastSeenAt == null ? '' : '  •  last seen ${DateFormat('d MMM, HH:mm').format(alert.lastSeenAt!)}'}',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: MaatriTokens.space16),
+                Wrap(
+                  spacing: MaatriTokens.space8,
+                  runSpacing: MaatriTokens.space8,
+                  children: [
+                    if (alert.status == 'open')
+                      OutlinedButton.icon(
+                        onPressed: () => onAction(alert, 'acknowledge'),
+                        icon: const Icon(Icons.visibility_rounded),
+                        label: const Text('Acknowledge'),
+                      ),
+                    if (alert.status != 'escalated')
+                      OutlinedButton.icon(
+                        onPressed: () => onAction(alert, 'escalate'),
+                        icon: const Icon(Icons.north_east_rounded),
+                        label: const Text('Escalate'),
+                      ),
+                    ElevatedButton.icon(
+                      onPressed: () => onAction(alert, 'resolve'),
+                      icon: const Icon(Icons.check_circle_outline_rounded),
+                      label: const Text('Resolve'),
                     ),
-                  if (alert.status != 'escalated')
-                    OutlinedButton.icon(
-                      onPressed: () => onAction(alert, 'escalate'),
-                      icon: const Icon(Icons.north_east_rounded),
-                      label: const Text('Escalate'),
-                    ),
-                  ElevatedButton.icon(
-                    onPressed: () => onAction(alert, 'resolve'),
-                    icon: const Icon(Icons.check_circle_outline_rounded),
-                    label: const Text('Resolve'),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
+      );
 }
 
 class _DashboardBanner extends StatelessWidget {
@@ -699,9 +775,13 @@ class _DashboardBanner extends StatelessWidget {
       padding: const EdgeInsets.all(MaatriTokens.space12),
       child: Row(
         children: [
-          Icon(critical ? Icons.warning_rounded : Icons.cloud_off_outlined, color: color),
+          Icon(critical ? Icons.warning_rounded : Icons.cloud_off_outlined,
+              color: color),
           const SizedBox(width: MaatriTokens.space8),
-          Expanded(child: Text(message, style: MaatriTokens.type(size: MaatriTokens.type14, color: color))),
+          Expanded(
+              child: Text(message,
+                  style: MaatriTokens.type(
+                      size: MaatriTokens.type14, color: color))),
         ],
       ),
     );
@@ -725,7 +805,8 @@ class _LiveUpdateNotice extends StatelessWidget {
             Expanded(
               child: Text(
                 'Live readings updated. Your current list order has been kept unchanged.',
-                style: MaatriTokens.type(size: MaatriTokens.type14, color: MaatriTokens.primaryDark),
+                style: MaatriTokens.type(
+                    size: MaatriTokens.type14, color: MaatriTokens.primaryDark),
               ),
             ),
           ],
@@ -744,7 +825,8 @@ class _EmptyPanel extends StatelessWidget {
         decoration: BoxDecoration(
           color: MaatriTokens.surfaceMuted.withValues(alpha: 0.5),
           borderRadius: BorderRadius.circular(MaatriTokens.radius12),
-          border: Border.all(color: MaatriTokens.border, style: BorderStyle.solid, width: 1.5),
+          border: Border.all(
+              color: MaatriTokens.border, style: BorderStyle.solid, width: 1.5),
         ),
         child: Center(
           child: Padding(
@@ -758,16 +840,23 @@ class _EmptyPanel extends StatelessWidget {
                     color: MaatriTokens.canvas,
                     shape: BoxShape.circle,
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10)
+                      BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.05),
+                          blurRadius: 10)
                     ],
                   ),
-                  child: Icon(icon, size: 48, color: MaatriTokens.primary.withValues(alpha: 0.5)),
+                  child: Icon(icon,
+                      size: 48,
+                      color: MaatriTokens.primary.withValues(alpha: 0.5)),
                 ),
                 const SizedBox(height: MaatriTokens.space24),
                 Text(
-                  message, 
-                  textAlign: TextAlign.center, 
-                  style: MaatriTokens.type(size: MaatriTokens.type16, color: MaatriTokens.textMuted, weight: FontWeight.w600),
+                  message,
+                  textAlign: TextAlign.center,
+                  style: MaatriTokens.type(
+                      size: MaatriTokens.type16,
+                      color: MaatriTokens.textMuted,
+                      weight: FontWeight.w600),
                 ),
               ],
             ),
