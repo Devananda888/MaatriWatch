@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument("--api-url", default=os.getenv("MAATRIWATCH_API_URL", "http://127.0.0.1:8000/api/v1/ingest/telemetry"))
     parser.add_argument("--device-id", default=os.getenv("MAATRIWATCH_DEVICE_ID"), required=os.getenv("MAATRIWATCH_DEVICE_ID") is None)
     parser.add_argument("--device-key", default=os.getenv("MAATRIWATCH_DEVICE_KEY"), required=os.getenv("MAATRIWATCH_DEVICE_KEY") is None)
-    parser.add_argument("--scenario", choices=("normal", "hypertension", "pph", "fall"), default="normal")
+    parser.add_argument("--scenario", choices=("normal", "hypertension", "fall"), default="normal")
     parser.add_argument("--count", type=int, default=0, help="Number of events; 0 means run until interrupted.")
     parser.add_argument("--interval", type=float, default=5.0, help="Seconds between events.")
     return parser.parse_args()
@@ -47,16 +47,6 @@ def telemetry(scenario: str, session_id: str, sequence: int) -> dict:
             {
                 "systolic_bp": 165,
                 "diastolic_bp": 112,
-                "measurement_sources": {"blood_pressure": "validated_cuff"},
-            }
-        )
-    elif scenario == "pph":
-        payload.update(
-            {
-                "heart_rate_bpm": 112,
-                "systolic_bp": 88,
-                "blood_loss_ml": 350,
-                "bleeding_reported": True,
                 "measurement_sources": {"blood_pressure": "validated_cuff"},
             }
         )

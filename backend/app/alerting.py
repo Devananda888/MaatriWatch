@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 
-POLICY_VERSION = "baseline-2026-08-14"
+POLICY_VERSION = "baseline-2026-09-11"
 
 # This policy is intentionally small and explicit.  Do not move values into a
 # Flutter client or a device: clinical policy must be centrally controlled and
@@ -22,15 +22,6 @@ POLICY: dict[str, dict[str, float]] = {
         "elevated_diastolic_mm_hg": 90,
         "severe_systolic_mm_hg": 160,
         "severe_diastolic_mm_hg": 110,
-    },
-    "postpartum_hemorrhage": {
-        # A bleeding measurement/report is required. Vitals alone are not a
-        # safe basis for labelling a patient as having a postpartum haemorrhage.
-        "early_blood_loss_ml": 300,
-        "critical_blood_loss_ml": 1000,
-        "tachycardia_bpm": 100,
-        "low_systolic_mm_hg": 90,
-        "shock_index": 1.0,
     },
     "fall": {
         "impact_g": 2.5,
@@ -66,7 +57,8 @@ def evaluate_alerts(reading: Mapping[str, Any]) -> list[AlertCandidate]:
 
     candidates: list[AlertCandidate] = []
     candidates.extend(_evaluate_postpartum_hypertension(reading))
-    candidates.extend(_evaluate_postpartum_hemorrhage(reading))
+    # PPH is intentionally outside the wearable MVP. Immediate post-delivery
+    # observation belongs to the clinical setting, not a prototype wearable.
     candidates.extend(_evaluate_fall(reading))
     candidates.extend(_evaluate_sos(reading))
     return candidates
@@ -130,51 +122,6 @@ def _evaluate_postpartum_hypertension(reading: Mapping[str, Any]) -> list[AlertC
             )
         ]
     return []
-
-
-def _evaluate_postpartum_hemorrhage(reading: Mapping[str, Any]) -> list[AlertCandidate]:
-    blood_loss = reading.get("blood_loss_ml")
-    bleeding_reported = reading.get("bleeding_reported", False)
-    if blood_loss is None and not bleeding_reported:
-        return []
-
-    policy = POLICY["postpartum_hemorrhage"]
-    heart_rate = reading.get("heart_rate_bpm")
-    systolic = (
-        reading.get("systolic_bp")
-        if reading.get("blood_pressure_source")
-        in {"validated_cuff", "clinician_entered"}
-        else None
-    )
-    shock_index = heart_rate / systolic if heart_rate is not None and systolic not in (None, 0) else None
-    abnormal_vitals = (
-        (heart_rate is not None and heart_rate >= policy["tachycardia_bpm"])
-        or (systolic is not None and systolic <= policy["low_systolic_mm_hg"])
-        or (shock_index is not None and shock_index >= policy["shock_index"])
-    )
-    is_critical_loss = blood_loss is not None and blood_loss >= policy["critical_blood_loss_ml"]
-    is_early_loss_with_instability = (
-        blood_loss is not None
-        and blood_loss >= policy["early_blood_loss_ml"]
-        and abnormal_vitals
-    )
-    is_reported_bleeding_with_instability = bleeding_reported and abnormal_vitals
-    if not (is_critical_loss or is_early_loss_with_instability or is_reported_bleeding_with_instability):
-        return []
-    return [
-        AlertCandidate(
-            rule_id="postpartum_hemorrhage_risk",
-            severity="critical",
-            message="Possible postpartum haemorrhage: urgent clinical assessment is required.",
-            evidence={
-                "blood_loss_ml": blood_loss,
-                "bleeding_reported": bleeding_reported,
-                "heart_rate_bpm": heart_rate,
-                "systolic_bp": systolic,
-                "shock_index": round(shock_index, 3) if shock_index is not None else None,
-            },
-        )
-    ]
 
 
 def _evaluate_fall(reading: Mapping[str, Any]) -> list[AlertCandidate]:

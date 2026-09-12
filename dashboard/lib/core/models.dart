@@ -40,7 +40,6 @@ class VitalReading {
     this.systolic,
     this.diastolic,
     this.battery,
-    this.bloodLoss,
     this.sampleCount,
     this.bloodPressureSource,
     this.heartRateSource,
@@ -66,7 +65,6 @@ class VitalReading {
   final double? systolic;
   final double? diastolic;
   final double? battery;
-  final double? bloodLoss;
   final int? sampleCount;
   final String? bloodPressureSource;
   final String? heartRateSource;
@@ -78,7 +76,8 @@ class VitalReading {
 
   factory VitalReading.fromJson(Map<String, dynamic> json) => VitalReading(
         capturedAt: asDateTime(json['captured_at']),
-        observedAt: asDateTime(json['observed_at']) ?? asDateTime(json['captured_at']),
+        observedAt:
+            asDateTime(json['observed_at']) ?? asDateTime(json['captured_at']),
         receivedAt: asDateTime(json['received_at']),
         heartRate: asDouble(json['heart_rate_bpm']),
         spo2: asDouble(json['spo2_percent']),
@@ -88,7 +87,6 @@ class VitalReading {
         systolic: asDouble(json['systolic_bp']),
         diastolic: asDouble(json['diastolic_bp']),
         battery: asDouble(json['battery_percent']),
-        bloodLoss: asDouble(json['blood_loss_ml']),
         sampleCount:
             json['sample_count'] is num ? asInt(json['sample_count']) : null,
         bloodPressureSource: json['blood_pressure_source'] as String?,
@@ -104,7 +102,9 @@ class VitalReading {
         'current' => 'current',
         'stale' => 'stale',
         'unavailable' => 'unavailable',
-        _ => measurementQuality == 'unavailable' ? 'unavailable' : 'status unknown',
+        _ => measurementQuality == 'unavailable'
+            ? 'unavailable'
+            : 'status unknown',
       };
 }
 
@@ -255,22 +255,80 @@ class ClinicalNote {
       );
 }
 
+class CareMessage {
+  const CareMessage({
+    required this.id,
+    required this.senderRole,
+    required this.body,
+    required this.status,
+    this.senderName,
+    this.inReplyTo,
+    this.createdAt,
+  });
+
+  final String id;
+  final String senderRole;
+  final String body;
+  final String status;
+  final String? senderName;
+  final String? inReplyTo;
+  final DateTime? createdAt;
+
+  factory CareMessage.fromJson(Map<String, dynamic> json) => CareMessage(
+        id: json['id'] as String,
+        senderRole: json['sender_role'] as String? ?? 'patient',
+        body: json['body'] as String? ?? '',
+        status: json['status'] as String? ?? 'open',
+        senderName: json['sender_name'] as String?,
+        inReplyTo: json['in_reply_to'] as String?,
+        createdAt: asDateTime(json['created_at']),
+      );
+}
+
+/// The wearable currently assigned to a patient by the hospital.
+///
+/// This deliberately exposes its hospital-facing identifier only; device
+/// credentials are never included in a patient-detail response.
+class AssignedDevice {
+  const AssignedDevice({
+    required this.id,
+    this.serialNumber,
+    this.firmwareVersion,
+    this.lastSeenAt,
+  });
+
+  final String id;
+  final String? serialNumber;
+  final String? firmwareVersion;
+  final DateTime? lastSeenAt;
+
+  factory AssignedDevice.fromJson(Map<String, dynamic> json) => AssignedDevice(
+        id: json['id'] as String,
+        serialNumber: json['serial_number'] as String?,
+        firmwareVersion: json['firmware_version'] as String?,
+        lastSeenAt: asDateTime(json['last_seen_at']),
+      );
+}
+
 class PatientDetail {
   const PatientDetail({
     required this.patient,
     required this.status,
     this.latestVital,
     this.latestScreening,
+    this.device,
   });
 
   final PatientSummary patient;
   final String status;
   final VitalReading? latestVital;
   final Map<String, dynamic>? latestScreening;
+  final AssignedDevice? device;
 
   factory PatientDetail.fromJson(Map<String, dynamic> json) {
     final patient = asMap(json['patient']);
     final vital = asMap(json['latest_vital']);
+    final device = asMap(json['device']);
     return PatientDetail(
       patient: PatientSummary(
         id: patient['id'] as String,
@@ -285,6 +343,7 @@ class PatientDetail {
       status: json['status'] as String? ?? 'normal',
       latestVital: vital.isEmpty ? null : VitalReading.fromJson(vital),
       latestScreening: asMap(json['latest_screening']),
+      device: device.isEmpty ? null : AssignedDevice.fromJson(device),
     );
   }
 }

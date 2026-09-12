@@ -6,8 +6,9 @@ import os
 
 import click
 
-from flask import Flask, jsonify, request
+from flask import Flask, abort, jsonify, request
 
+from .ai_chat import ai_chat_bp
 from .auth import auth_bp
 from .clinician import clinician_bp
 from .config import Config
@@ -34,11 +35,20 @@ def create_app(test_config: dict | None = None) -> Flask:
     init_firebase(app)
     app.teardown_appcontext(close_db)
     app.register_blueprint(auth_bp, url_prefix="/api/v1")
+    app.register_blueprint(ai_chat_bp, url_prefix="/api/v1")
     app.register_blueprint(clinician_bp, url_prefix="/api/v1")
     app.register_blueprint(ingestion_bp, url_prefix="/api/v1")
     app.register_blueprint(patient_bp, url_prefix="/api/v1")
     app.register_blueprint(devices_bp, url_prefix="/api/v1")
     app.register_blueprint(provisioning_bp, url_prefix="/api/v1")
+
+    @app.before_request
+    def protect_ingestion_payload_size():
+        """A report upload must not silently expand the device attack surface."""
+        if request.path in {"/api/v1/ingest/vitals", "/api/v1/ingest/telemetry"}:
+            size = request.content_length
+            if size is not None and size > app.config["TELEMETRY_MAX_CONTENT_LENGTH"]:
+                abort(413, description="The telemetry payload is too large")
 
     @app.after_request
     def protect_api_responses(response):
@@ -95,6 +105,10 @@ def create_app(test_config: dict | None = None) -> Flask:
     @app.errorhandler(413)
     def payload_too_large(_error):
         return jsonify({"error": "payload_too_large", "message": "The telemetry payload is too large"}), 413
+
+    @app.errorhandler(429)
+    def rate_limited(error):
+        return jsonify({"error": "rate_limited", "message": str(error.description)}), 429
 
     @app.errorhandler(503)
     def service_unavailable(error):

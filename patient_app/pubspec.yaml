@@ -11,6 +11,8 @@ dependencies:
     sdk: flutter
   firebase_auth: ^6.5.6
   firebase_core: ^4.13.0
+  # 12.3.0 fixes Android Gradle Plugin 9 registration/build compatibility.
+  file_picker: ^12.3.0
   http: ^1.6.0
 
 dev_dependencies:

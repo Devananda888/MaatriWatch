@@ -7,6 +7,7 @@ client; no browser action writes directly to RTDB.
 
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
@@ -18,6 +19,12 @@ from .auth import require_hospital_role
 from .db import get_db
 from .measurements import public_vital
 from .outbox import deliver_outbox_ids, enqueue_projection
+from .patient_workflows import (
+    care_message_input,
+    clinician_guidance_input,
+    clinical_profile_input,
+    validation_observation_input,
+)
 
 clinician_bp = Blueprint("clinician", __name__)
 
@@ -666,3 +673,254 @@ def create_clinical_note(hospital_id: str, patient_id: str):
         )
     connection.commit()
     return jsonify({"note": _row(created)}), 201
+
+
+@clinician_bp.route("/hospitals/<hospital_id>/patients/<patient_id>/care-messages", methods=["GET", "POST"])
+@require_hospital_role("clinician")
+def care_messages(hospital_id: str, patient_id: str):
+    hospital_uuid = _identifier(hospital_id, "hospital_id")
+    patient_uuid = _identifier(patient_id, "patient_id")
+    if _demo_enabled():
+        abort(501, description="Care messaging is not included in the isolated demo store")
+    connection = get_db()
+    if request.method == "GET":
+        with connection.cursor() as cursor:
+            _patient_or_404(cursor, hospital_uuid, patient_uuid)
+            cursor.execute(
+                """SELECT m.id, m.sender_role, m.body, m.status, m.in_reply_to, m.created_at, m.read_at,
+                          CASE WHEN m.sender_role = 'clinician' THEN u.display_name ELSE p.full_name END AS sender_name
+                     FROM care_messages m
+                     JOIN app_users u ON u.id = m.sender_user_id
+                     JOIN patients p ON p.id = m.patient_id
+                    WHERE m.hospital_id = %s AND m.patient_id = %s
+                    ORDER BY m.created_at ASC, m.id ASC LIMIT 100""",
+                (hospital_uuid, patient_uuid),
+            )
+            items = cursor.fetchall()
+            cursor.execute(
+                """UPDATE care_messages SET read_at = now()
+                     WHERE hospital_id = %s AND patient_id = %s
+                       AND sender_role = 'patient' AND read_at IS NULL""",
+                (hospital_uuid, patient_uuid),
+            )
+        connection.commit()
+        return jsonify({"items": _wire(items)})
+
+    payload = care_message_input(_json_object())
+    with connection.cursor() as cursor:
+        _patient_or_404(cursor, hospital_uuid, patient_uuid)
+        if payload["in_reply_to"]:
+            cursor.execute(
+                "SELECT id FROM care_messages WHERE id = %s AND patient_id = %s AND hospital_id = %s",
+                (payload["in_reply_to"], patient_uuid, hospital_uuid),
+            )
+            if not cursor.fetchone():
+                abort(400, description="in_reply_to does not belong to this patient conversation")
+        cursor.execute(
+            """INSERT INTO care_messages
+                   (hospital_id, patient_id, sender_user_id, sender_role, body, in_reply_to, status)
+                 VALUES (%s, %s, %s, 'clinician', %s, %s, 'responded')
+                 RETURNING id, sender_role, body, status, in_reply_to, created_at, read_at""",
+            (hospital_uuid, patient_uuid, g.actor["id"], payload["body"], payload["in_reply_to"]),
+        )
+        saved = cursor.fetchone()
+        if payload["in_reply_to"]:
+            cursor.execute(
+                """UPDATE care_messages SET status = 'responded'
+                     WHERE id = %s AND patient_id = %s AND sender_role = 'patient'""",
+                (payload["in_reply_to"], patient_uuid),
+            )
+        _audit(
+            cursor, hospital_id=hospital_uuid, action="clinician.care_message_sent",
+            entity_type="care_message", entity_id=saved["id"], request_id=uuid4(),
+            metadata={"patient_id": str(patient_uuid)},
+        )
+    connection.commit()
+    return jsonify({"message": _row(saved)}), 201
+
+
+@clinician_bp.route("/hospitals/<hospital_id>/patients/<patient_id>/clinical-profile", methods=["GET", "PUT"])
+@require_hospital_role("clinician")
+def patient_clinical_profile(hospital_id: str, patient_id: str):
+    hospital_uuid = _identifier(hospital_id, "hospital_id")
+    patient_uuid = _identifier(patient_id, "patient_id")
+    if _demo_enabled():
+        abort(501, description="Clinical profiles are not included in the isolated demo store")
+    connection = get_db()
+    if request.method == "GET":
+        with connection.cursor() as cursor:
+            _patient_or_404(cursor, hospital_uuid, patient_uuid)
+            cursor.execute(
+                """SELECT pregnancy_stage, patient_reported_history, clinician_confirmed_history,
+                          current_medications, activity_clearance, last_patient_update_at, reviewed_at
+                     FROM patient_clinical_profiles WHERE patient_id = %s""",
+                (patient_uuid,),
+            )
+            profile = cursor.fetchone()
+        return jsonify({"profile": _row(profile) or {
+            "pregnancy_stage": "not_recorded", "patient_reported_history": {},
+            "clinician_confirmed_history": {}, "current_medications": [],
+            "activity_clearance": "not_recorded",
+        }})
+
+    payload = _json_object()
+    profile = clinical_profile_input(payload)
+    clearance = payload.get("activity_clearance", "not_recorded")
+    if clearance not in {"not_recorded", "cleared_by_clinician", "restricted_by_clinician"}:
+        abort(400, description="activity_clearance is invalid")
+    with connection.cursor() as cursor:
+        _patient_or_404(cursor, hospital_uuid, patient_uuid)
+        cursor.execute(
+            """INSERT INTO patient_clinical_profiles
+                   (patient_id, hospital_id, pregnancy_stage, clinician_confirmed_history,
+                    current_medications, activity_clearance, reviewed_by, reviewed_at)
+                 VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, now())
+                 ON CONFLICT (patient_id) DO UPDATE SET
+                   pregnancy_stage = EXCLUDED.pregnancy_stage,
+                   clinician_confirmed_history = EXCLUDED.clinician_confirmed_history,
+                   current_medications = EXCLUDED.current_medications,
+                   activity_clearance = EXCLUDED.activity_clearance,
+                   reviewed_by = EXCLUDED.reviewed_by, reviewed_at = now(), updated_at = now()
+                 RETURNING pregnancy_stage, patient_reported_history, clinician_confirmed_history,
+                           current_medications, activity_clearance, last_patient_update_at, reviewed_at""",
+            (patient_uuid, hospital_uuid, profile["pregnancy_stage"], json.dumps(profile["history"]),
+             json.dumps(profile["current_medications"]), clearance, g.actor["id"]),
+        )
+        saved = cursor.fetchone()
+        _audit(
+            cursor, hospital_id=hospital_uuid, action="clinician.clinical_profile_reviewed",
+            entity_type="patient_clinical_profile", entity_id=patient_uuid, request_id=uuid4(),
+            metadata={"activity_clearance": clearance},
+        )
+    connection.commit()
+    return jsonify({"profile": _row(saved)})
+
+
+@clinician_bp.route("/hospitals/<hospital_id>/patients/<patient_id>/guidance", methods=["GET", "POST"])
+@require_hospital_role("clinician")
+def patient_guidance(hospital_id: str, patient_id: str):
+    hospital_uuid = _identifier(hospital_id, "hospital_id")
+    patient_uuid = _identifier(patient_id, "patient_id")
+    if _demo_enabled():
+        abort(501, description="Clinician guidance is not included in the isolated demo store")
+    connection = get_db()
+    if request.method == "GET":
+        with connection.cursor() as cursor:
+            _patient_or_404(cursor, hospital_uuid, patient_uuid)
+            cursor.execute(
+                """SELECT id, category, title, body, status, created_at, updated_at
+                     FROM patient_guidance WHERE hospital_id = %s AND patient_id = %s
+                     ORDER BY created_at DESC LIMIT 50""",
+                (hospital_uuid, patient_uuid),
+            )
+            items = cursor.fetchall()
+        return jsonify({"items": _wire(items)})
+
+    guidance = clinician_guidance_input(_json_object())
+    with connection.cursor() as cursor:
+        _patient_or_404(cursor, hospital_uuid, patient_uuid)
+        cursor.execute(
+            """INSERT INTO patient_guidance
+                   (hospital_id, patient_id, category, title, body, created_by)
+                 VALUES (%s, %s, %s, %s, %s, %s)
+                 RETURNING id, category, title, body, status, created_at, updated_at""",
+            (hospital_uuid, patient_uuid, guidance["category"], guidance["title"], guidance["body"], g.actor["id"]),
+        )
+        saved = cursor.fetchone()
+        _audit(
+            cursor, hospital_id=hospital_uuid, action="clinician.guidance_created",
+            entity_type="patient_guidance", entity_id=saved["id"], request_id=uuid4(),
+            metadata={"patient_id": str(patient_uuid), "category": guidance["category"]},
+        )
+    connection.commit()
+    return jsonify({"guidance": _row(saved)}), 201
+
+
+@clinician_bp.route("/hospitals/<hospital_id>/patients/<patient_id>/wearable-validation", methods=["GET", "POST"])
+@require_hospital_role("clinician")
+def wearable_validation(hospital_id: str, patient_id: str):
+    hospital_uuid = _identifier(hospital_id, "hospital_id")
+    patient_uuid = _identifier(patient_id, "patient_id")
+    if _demo_enabled():
+        abort(501, description="Validation records are not included in the isolated demo store")
+    connection = get_db()
+    if request.method == "GET":
+        with connection.cursor() as cursor:
+            _patient_or_404(cursor, hospital_uuid, patient_uuid)
+            cursor.execute(
+                """SELECT id, metric, wearable_value, reference_value, reference_device_label,
+                          observation_time, absolute_error, percent_error, note, created_at
+                     FROM wearable_validation_observations
+                    WHERE hospital_id = %s AND patient_id = %s
+                    ORDER BY observation_time DESC, id DESC LIMIT 100""",
+                (hospital_uuid, patient_uuid),
+            )
+            items = cursor.fetchall()
+        return jsonify({"items": _wire(items), "notice": "These paired observations do not by themselves establish clinical validation."})
+
+    observation = validation_observation_input(_json_object())
+    absolute_error = abs(observation["wearable_value"] - observation["reference_value"])
+    percent_error = (
+        (absolute_error / abs(observation["reference_value"])) * 100
+        if observation["reference_value"] != 0 else None
+    )
+    with connection.cursor() as cursor:
+        _patient_or_404(cursor, hospital_uuid, patient_uuid)
+        cursor.execute(
+            """INSERT INTO wearable_validation_observations
+                   (hospital_id, patient_id, recorded_by, metric, wearable_value, reference_value,
+                    reference_device_label, observation_time, absolute_error, percent_error, note)
+                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 RETURNING id, metric, wearable_value, reference_value, reference_device_label,
+                           observation_time, absolute_error, percent_error, note, created_at""",
+            (hospital_uuid, patient_uuid, g.actor["id"], observation["metric"],
+             observation["wearable_value"], observation["reference_value"],
+             observation["reference_device_label"], observation["observation_time"], absolute_error,
+             percent_error, observation["note"]),
+        )
+        saved = cursor.fetchone()
+        _audit(
+            cursor, hospital_id=hospital_uuid, action="clinician.wearable_validation_recorded",
+            entity_type="wearable_validation_observation", entity_id=saved["id"], request_id=uuid4(),
+            metadata={"patient_id": str(patient_uuid), "metric": observation["metric"]},
+        )
+    connection.commit()
+    return jsonify({"observation": _row(saved), "notice": "Recorded as a prototype comparison, not a clinical validation claim."}), 201
+
+
+@clinician_bp.patch("/hospitals/<hospital_id>/patients/<patient_id>/lab-results/<result_id>")
+@require_hospital_role("clinician")
+def review_lab_result(hospital_id: str, patient_id: str, result_id: str):
+    """Record a clinician review without converting a lab value into an app diagnosis."""
+    hospital_uuid = _identifier(hospital_id, "hospital_id")
+    patient_uuid = _identifier(patient_id, "patient_id")
+    result_uuid = _identifier(result_id, "result_id")
+    if _demo_enabled():
+        abort(501, description="Lab review is not included in the isolated demo store")
+    payload = _json_object()
+    reference_status = payload.get("reference_status")
+    if reference_status not in {"not_interpreted", "needs_clinician_review"}:
+        abort(400, description="reference_status is invalid")
+    note = _required_note(payload, required=False)
+    connection = get_db()
+    with connection.cursor() as cursor:
+        _patient_or_404(cursor, hospital_uuid, patient_uuid)
+        cursor.execute(
+            """UPDATE patient_lab_results SET review_status = 'reviewed',
+                       reference_status = %s, review_note = %s,
+                       reviewed_by = %s, reviewed_at = now()
+                 WHERE id = %s AND hospital_id = %s AND patient_id = %s
+                 RETURNING id, category, test_type, result_values, result_units, reported_on,
+                           trimester, review_status, reference_status, review_note, submitted_at, reviewed_at""",
+            (reference_status, note, g.actor["id"], result_uuid, hospital_uuid, patient_uuid),
+        )
+        saved = cursor.fetchone()
+        if not saved:
+            abort(404, description="Lab result was not found for this patient")
+        _audit(
+            cursor, hospital_id=hospital_uuid, action="clinician.lab_result_reviewed",
+            entity_type="patient_lab_result", entity_id=saved["id"], request_id=uuid4(),
+            metadata={"patient_id": str(patient_uuid), "reference_status": reference_status},
+        )
+    connection.commit()
+    return jsonify({"result": _row(saved)})

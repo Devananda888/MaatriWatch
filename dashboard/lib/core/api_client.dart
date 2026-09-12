@@ -105,6 +105,51 @@ class ApiClient {
     return ClinicalNote.fromJson(asMap(json['note']));
   }
 
+  Future<List<CareMessage>> careMessages(
+      String hospitalId, String patientId) async {
+    if (demoRole != null) return const [];
+    final json = await _request(
+        'GET', '/hospitals/$hospitalId/patients/$patientId/care-messages');
+    return (json['items'] as List<dynamic>? ?? const [])
+        .map((item) => CareMessage.fromJson(asMap(item)))
+        .toList(growable: false);
+  }
+
+  Future<CareMessage> sendCareMessage(
+    String hospitalId,
+    String patientId,
+    String body, {
+    String? inReplyTo,
+  }) async {
+    if (demoRole != null) {
+      throw const ApiException(
+          'Care messaging is unavailable in the isolated demo.');
+    }
+    final json = await _request(
+      'POST',
+      '/hospitals/$hospitalId/patients/$patientId/care-messages',
+      body: <String, dynamic>{
+        'body': body,
+        if (inReplyTo != null) 'in_reply_to': inReplyTo,
+      },
+    );
+    return CareMessage.fromJson(asMap(json['message']));
+  }
+
+  Future<Map<String, dynamic>> createGuidance(
+    String hospitalId,
+    String patientId, {
+    required String category,
+    required String title,
+    required String body,
+  }) =>
+      _request('POST', '/hospitals/$hospitalId/patients/$patientId/guidance',
+          body: <String, dynamic>{
+            'category': category,
+            'title': title,
+            'body': body,
+          });
+
   Future<Map<String, dynamic>> _request(
     String method,
     String path, {

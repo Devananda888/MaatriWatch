@@ -21,11 +21,7 @@ class AlertRuleTest(unittest.TestCase):
         self.assertEqual(alerts[0].rule_id, "postpartum_hypertension_risk")
         self.assertEqual(alerts[0].severity, "warning")
 
-    def test_vitals_without_a_bleeding_signal_do_not_claim_pph(self):
-        alerts = evaluate_alerts({"heart_rate_bpm": 120, "systolic_bp": 85, "blood_pressure_source": "validated_cuff"})
-        self.assertFalse(any(alert.rule_id == "postpartum_hemorrhage_risk" for alert in alerts))
-
-    def test_reported_bleeding_plus_instability_creates_pph_risk(self):
+    def test_pph_inputs_are_outside_the_wearable_alert_mvp(self):
         alerts = evaluate_alerts(
             {
                 "blood_loss_ml": 350,
@@ -35,9 +31,7 @@ class AlertRuleTest(unittest.TestCase):
                 "bleeding_reported": True,
             }
         )
-        pph_alert = next(alert for alert in alerts if alert.rule_id == "postpartum_hemorrhage_risk")
-        self.assertEqual(pph_alert.severity, "critical")
-        self.assertEqual(pph_alert.evidence["blood_loss_ml"], 350)
+        self.assertFalse(any(alert.rule_id == "postpartum_hemorrhage_risk" for alert in alerts))
 
     def test_raw_motion_pattern_creates_fall_alert(self):
         alerts = evaluate_alerts(

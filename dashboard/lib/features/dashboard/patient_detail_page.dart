@@ -28,11 +28,18 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
   List<VitalReading> _vitals = const [];
   List<ClinicalNote> _notes = const [];
   List<AlertItem> _alerts = const [];
+  List<CareMessage> _messages = const [];
   bool _loading = true;
   bool _savingNote = false;
+  bool _sendingMessage = false;
+  bool _savingGuidance = false;
   String? _error;
   VitalMetric _metric = VitalMetric.heartRate;
   final _note = TextEditingController();
+  final _message = TextEditingController();
+  final _guidanceTitle = TextEditingController();
+  final _guidanceBody = TextEditingController();
+  String _guidanceCategory = 'gdm_support';
 
   @override
   void initState() {
@@ -43,6 +50,9 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
   @override
   void dispose() {
     _note.dispose();
+    _message.dispose();
+    _guidanceTitle.dispose();
+    _guidanceBody.dispose();
     super.dispose();
   }
 
@@ -58,6 +68,7 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
         widget.api.notes(widget.hospital.hospitalId, widget.patient.id),
         widget.api
             .alerts(widget.hospital.hospitalId, patientId: widget.patient.id),
+        widget.api.careMessages(widget.hospital.hospitalId, widget.patient.id),
       ]);
       if (!mounted) return;
       setState(() {
@@ -65,6 +76,7 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
         _vitals = values[1] as List<VitalReading>;
         _notes = values[2] as List<ClinicalNote>;
         _alerts = values[3] as List<AlertItem>;
+        _messages = values[4] as List<CareMessage>;
         _loading = false;
       });
     } on ApiException catch (error) {
@@ -104,6 +116,70 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
       }
     } finally {
       if (mounted) setState(() => _savingNote = false);
+    }
+  }
+
+  Future<void> _sendCareMessage() async {
+    final text = _message.text.trim();
+    if (text.isEmpty || _sendingMessage) return;
+    CareMessage? replyTo;
+    for (final item in _messages.reversed) {
+      if (item.senderRole == 'patient') {
+        replyTo = item;
+        break;
+      }
+    }
+    setState(() => _sendingMessage = true);
+    try {
+      final sent = await widget.api.sendCareMessage(
+        widget.hospital.hospitalId,
+        widget.patient.id,
+        text,
+        inReplyTo: replyTo?.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _messages = [..._messages, sent];
+        _message.clear();
+      });
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _sendingMessage = false);
+    }
+  }
+
+  Future<void> _createGuidance() async {
+    final title = _guidanceTitle.text.trim();
+    final body = _guidanceBody.text.trim();
+    if (title.isEmpty || body.isEmpty || _savingGuidance) return;
+    setState(() => _savingGuidance = true);
+    try {
+      await widget.api.createGuidance(
+        widget.hospital.hospitalId,
+        widget.patient.id,
+        category: _guidanceCategory,
+        title: title,
+        body: body,
+      );
+      if (!mounted) return;
+      setState(() {
+        _guidanceTitle.clear();
+        _guidanceBody.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Clinician-approved guidance is now available to the patient.')));
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _savingGuidance = false);
     }
   }
 
@@ -185,6 +261,8 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
             ),
           ),
           const SizedBox(height: MaatriTokens.space16),
+          _AssignedWatchCard(device: detail.device),
+          const SizedBox(height: MaatriTokens.space16),
           _VitalsSnapshot(reading: detail.latestVital),
           const SizedBox(height: MaatriTokens.space16),
           Card(
@@ -230,6 +308,149 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
   Widget _notesAndAlerts(BuildContext context) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(MaatriTokens.space16),
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Clinician-approved guidance',
+                        style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: MaatriTokens.space8),
+                    const Text(
+                        'Only use this for advice you have individually reviewed. It is not an automated diet or prescribing tool.'),
+                    const SizedBox(height: MaatriTokens.space8),
+                    DropdownButtonFormField<String>(
+                      initialValue: _guidanceCategory,
+                      decoration:
+                          const InputDecoration(labelText: 'Guidance area'),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'gdm_support', child: Text('GDM support')),
+                        DropdownMenuItem(
+                            value: 'thyroid_followup',
+                            child: Text('Thyroid follow-up')),
+                        DropdownMenuItem(
+                            value: 'activity', child: Text('Activity')),
+                        DropdownMenuItem(
+                            value: 'wellbeing', child: Text('Wellbeing')),
+                      ],
+                      onChanged: (value) => setState(
+                          () => _guidanceCategory = value ?? 'gdm_support'),
+                    ),
+                    const SizedBox(height: MaatriTokens.space8),
+                    TextField(
+                      controller: _guidanceTitle,
+                      maxLength: 160,
+                      decoration: const InputDecoration(
+                          hintText: 'Title for the patient'),
+                    ),
+                    TextField(
+                      controller: _guidanceBody,
+                      minLines: 3,
+                      maxLines: 6,
+                      maxLength: 4000,
+                      decoration:
+                          const InputDecoration(hintText: 'Reviewed guidance'),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton.icon(
+                        onPressed: _savingGuidance ? null : _createGuidance,
+                        icon: _savingGuidance
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.verified_outlined),
+                        label: const Text('Publish guidance'),
+                      ),
+                    ),
+                  ]),
+            ),
+          ),
+          const SizedBox(height: MaatriTokens.space16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(MaatriTokens.space16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Wrap(
+                    alignment: WrapAlignment.spaceBetween,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text('Patient messages (${_messages.length})',
+                          style: Theme.of(context).textTheme.titleLarge),
+                      IconButton(
+                        tooltip: 'Refresh messages',
+                        onPressed: _loading ? null : _load,
+                        icon: const Icon(Icons.refresh_rounded),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: MaatriTokens.space8),
+                  const Text(
+                      'Asynchronous, non-emergency communication. Do not use for urgent care.'),
+                  const SizedBox(height: MaatriTokens.space8),
+                  if (widget.api.demoRole != null)
+                    const Text(
+                        'Live messages require a signed-in hospital account. The isolated demo does not send or receive patient messages.')
+                  else if (_messages.isEmpty)
+                    const Text('No patient messages yet.')
+                  else
+                    ..._recentMessages.map((message) => Padding(
+                          padding: const EdgeInsets.only(
+                              bottom: MaatriTokens.space8),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    message.senderRole == 'patient'
+                                        ? '${widget.patient.name} • Patient'
+                                        : (message.senderName ?? 'Clinician'),
+                                    style:
+                                        Theme.of(context).textTheme.labelLarge),
+                                Text(message.body),
+                                if (message.createdAt != null)
+                                  Text(
+                                      DateFormat('d MMM, HH:mm')
+                                          .format(message.createdAt!),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .labelSmall),
+                              ]),
+                        )),
+                  if (widget.api.demoRole == null) ...[
+                    TextField(
+                      controller: _message,
+                      minLines: 2,
+                      maxLines: 4,
+                      maxLength: 2000,
+                      decoration: const InputDecoration(
+                          hintText: 'Reply to the patient'),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: ElevatedButton.icon(
+                        onPressed: _sendingMessage ? null : _sendCareMessage,
+                        icon: _sendingMessage
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.send_outlined),
+                        label: const Text('Send reply'),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: MaatriTokens.space16),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(MaatriTokens.space16),
@@ -322,6 +543,12 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
           ),
         ],
       );
+
+  List<CareMessage> get _recentMessages {
+    const maxVisible = 12;
+    if (_messages.length <= maxVisible) return _messages;
+    return _messages.sublist(_messages.length - maxVisible);
+  }
 }
 
 class _VitalsSnapshot extends StatelessWidget {
@@ -381,6 +608,90 @@ class _VitalsSnapshot extends StatelessWidget {
           .toList(growable: false),
     );
   }
+}
+
+class _AssignedWatchCard extends StatelessWidget {
+  const _AssignedWatchCard({required this.device});
+
+  final AssignedDevice? device;
+
+  @override
+  Widget build(BuildContext context) {
+    if (device == null) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(MaatriTokens.space16),
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.watch_off_outlined),
+            title: Text('No MaatriWatch assigned'),
+            subtitle: Text('Assign a hospital-issued watch before monitoring.'),
+          ),
+        ),
+      );
+    }
+
+    final lastSeen = device!.lastSeenAt == null
+        ? 'No telemetry received yet'
+        : 'Last seen ${DateFormat('d MMM, HH:mm').format(device!.lastSeenAt!)}';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(MaatriTokens.space16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.watch_outlined),
+              const SizedBox(width: MaatriTokens.space8),
+              Text('Assigned MaatriWatch',
+                  style: Theme.of(context).textTheme.titleLarge),
+            ]),
+            const SizedBox(height: MaatriTokens.space12),
+            Wrap(
+              spacing: MaatriTokens.space24,
+              runSpacing: MaatriTokens.space12,
+              children: [
+                _DeviceField(
+                    label: 'Watch ID', value: device!.id, selectable: true),
+                _DeviceField(
+                    label: 'Serial number',
+                    value: device!.serialNumber ?? 'Not recorded'),
+                _DeviceField(
+                    label: 'Firmware',
+                    value: device!.firmwareVersion ?? 'Not reported'),
+                _DeviceField(label: 'Connection', value: lastSeen),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DeviceField extends StatelessWidget {
+  const _DeviceField({
+    required this.label,
+    required this.value,
+    this.selectable = false,
+  });
+
+  final String label;
+  final String value;
+  final bool selectable;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: 235,
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: MaatriTokens.space4),
+          selectable
+              ? SelectableText(value,
+                  style: Theme.of(context).textTheme.bodyMedium)
+              : Text(value, style: Theme.of(context).textTheme.bodyMedium),
+        ]),
+      );
 }
 
 class _VitalValue extends StatelessWidget {

@@ -68,6 +68,17 @@ def public_vital(
         "temperature": value.get("temperature_source"),
         "blood_pressure": value.get("blood_pressure_source"),
     }
+    # Activity context is only descriptive. It must never turn an abnormal
+    # physiological reading into "normal" or suppress an SOS/fall pathway.
+    motion = value.get("motion") if isinstance(value.get("motion"), Mapping) else {}
+    state = motion.get("activity_state")
+    confidence = motion.get("classifier_confidence")
+    value["activity_context"] = (
+        state
+        if state in {"resting", "walking", "exercising"}
+        and isinstance(confidence, (int, float)) and confidence >= 0.75
+        else "unknown"
+    )
     return {key: _json_value(item) for key, item in value.items()}
 
 

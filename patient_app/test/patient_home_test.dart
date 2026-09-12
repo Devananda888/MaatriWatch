@@ -46,6 +46,16 @@ void main() {
         find.textContaining('Do not use an unconfigured app'), findsOneWidget);
   });
 
+  testWidgets('debug configuration state offers an explicit presentation demo',
+      (tester) async {
+    await tester.pumpWidget(const MaatriWatchPatientApp());
+    await tester.pump();
+    await tester.tap(find.text('Run presentation demo'));
+    await tester.pumpAndSettle();
+    expect(find.text('Welcome to MaatriWatch'), findsOneWidget);
+    expect(find.text('DEMO'), findsOneWidget);
+  });
+
   testWidgets('displays a supplied configuration error', (tester) async {
     await tester.pumpWidget(const MaatriWatchPatientApp(
       initializationError: 'Secure configuration is required.',

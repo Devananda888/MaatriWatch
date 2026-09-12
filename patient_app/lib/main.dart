@@ -1,14 +1,22 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'core/app_theme.dart';
 import 'core/runtime_config.dart';
 import 'features/auth/auth_gate.dart';
+import 'features/demo/demo_patient_app.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Presentation mode is an isolated debug-only app. It never creates a
+  // Firebase session and is rejected by PatientRuntimeConfig in release.
+  if (PatientRuntimeConfig.demoMode && !kReleaseMode) {
+    runApp(const MaatriWatchPatientApp(demoMode: true));
+    return;
+  }
   final configurationError = PatientRuntimeConfig.validationError() ??
       PatientFirebaseOptions.validationError();
   var firebaseReady =
@@ -38,11 +46,13 @@ class MaatriWatchPatientApp extends StatelessWidget {
     this.firebaseReady = false,
     this.initializationError,
     this.home,
+    this.demoMode = false,
   });
 
   final bool firebaseReady;
   final String? initializationError;
   final Widget? home;
+  final bool demoMode;
 
   @override
   Widget build(BuildContext context) => MaterialApp(
@@ -50,15 +60,22 @@ class MaatriWatchPatientApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: maatriTheme(),
         home: home ??
-            (firebaseReady
-                ? PatientAuthGate(auth: FirebaseAuth.instance)
-                : _ConfigurationScreen(message: initializationError)),
+            (demoMode
+                ? const DemoPatientSignIn()
+                : (firebaseReady
+                    ? PatientAuthGate(auth: FirebaseAuth.instance)
+                    : _ConfigurationScreen(
+                        message: initializationError,
+                        allowPresentationDemo: !kReleaseMode,
+                      ))),
       );
 }
 
 class _ConfigurationScreen extends StatelessWidget {
-  const _ConfigurationScreen({this.message});
+  const _ConfigurationScreen(
+      {this.message, this.allowPresentationDemo = false});
   final String? message;
+  final bool allowPresentationDemo;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -83,6 +100,24 @@ class _ConfigurationScreen extends StatelessWidget {
                     'Please contact your hospital care team. Do not use an unconfigured app for care decisions.',
                     textAlign: TextAlign.center,
                   ),
+                  if (allowPresentationDemo) ...[
+                    const SizedBox(height: 24),
+                    const Divider(),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'For the presentation only, you can open the clearly labelled simulated demo.',
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pushReplacement(
+                        MaterialPageRoute(
+                            builder: (_) => const DemoPatientSignIn()),
+                      ),
+                      icon: const Icon(Icons.play_circle_outline),
+                      label: const Text('Run presentation demo'),
+                    ),
+                  ],
                 ]),
               ),
             ),

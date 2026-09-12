@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../core/design_tokens.dart';
 import '../../core/patient_api.dart';
+import 'patient_followup.dart';
+import 'patient_health_actions.dart';
 
 /// Patient-facing safety companion. It routes concerns to care teams; it does not diagnose.
 class PatientHome extends StatefulWidget {
@@ -19,6 +21,7 @@ class _PatientHomeState extends State<PatientHome> {
   Map<String, bool> _consents = {};
   int _page = 0;
   bool _busy = false;
+  bool _labPromptShown = false;
   String? _offline;
   String? _accessDenied;
   PatientApi get _api => widget.api ?? (_fallbackApi ??= PatientApi());
@@ -46,6 +49,11 @@ class _PatientHomeState extends State<PatientHome> {
               item['consent_type'] as String: item['granted'] == true
           };
         });
+        if (_data['lab_onboarding_pending'] == true && !_labPromptShown) {
+          _labPromptShown = true;
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => _showLabOnboarding());
+        }
       }
     } on PatientApiException catch (error) {
       if (mounted) {
@@ -74,34 +82,34 @@ class _PatientHomeState extends State<PatientHome> {
       );
     }
     return Scaffold(
-        body: SafeArea(
-            child: RefreshIndicator(
-                onRefresh: _load,
-                child: IndexedStack(
-                    index: _page,
-                    children: [_home(), _plan(), _help(), _profile()]))),
-        bottomNavigationBar: NavigationBar(
-            selectedIndex: _page,
-            onDestinationSelected: (i) => setState(() => _page = i),
-            destinations: const [
-              NavigationDestination(
-                  icon: Icon(Icons.home_outlined),
-                  selectedIcon: Icon(Icons.home),
-                  label: 'Home'),
-              NavigationDestination(
-                  icon: Icon(Icons.calendar_month_outlined),
-                  selectedIcon: Icon(Icons.calendar_month),
-                  label: 'Care plan'),
-              NavigationDestination(
-                  icon: Icon(Icons.health_and_safety_outlined),
-                  selectedIcon: Icon(Icons.health_and_safety),
-                  label: 'Get help'),
-              NavigationDestination(
-                  icon: Icon(Icons.person_outline),
-                  selectedIcon: Icon(Icons.person),
-                  label: 'Profile'),
-            ]),
-      );
+      body: SafeArea(
+          child: RefreshIndicator(
+              onRefresh: _load,
+              child: IndexedStack(
+                  index: _page,
+                  children: [_home(), _plan(), _help(), _profile()]))),
+      bottomNavigationBar: NavigationBar(
+          selectedIndex: _page,
+          onDestinationSelected: (i) => setState(() => _page = i),
+          destinations: const [
+            NavigationDestination(
+                icon: Icon(Icons.home_outlined),
+                selectedIcon: Icon(Icons.home),
+                label: 'Home'),
+            NavigationDestination(
+                icon: Icon(Icons.calendar_month_outlined),
+                selectedIcon: Icon(Icons.calendar_month),
+                label: 'Care plan'),
+            NavigationDestination(
+                icon: Icon(Icons.health_and_safety_outlined),
+                selectedIcon: Icon(Icons.health_and_safety),
+                label: 'Get help'),
+            NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: 'Profile'),
+          ]),
+    );
   }
 
   Widget _home() {
@@ -136,6 +144,8 @@ class _PatientHomeState extends State<PatientHome> {
             color: MaatriTokens.warning),
       const SizedBox(height: 16),
       _Safety(onTap: () => setState(() => _page = 2)),
+      const SizedBox(height: 12),
+      _alertStatus(),
       const SizedBox(height: 20),
       Text('Your wearable', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 10),
@@ -163,7 +173,13 @@ class _PatientHomeState extends State<PatientHome> {
                               (vital.isEmpty
                                   ? 'Waiting for a reading'
                                   : _readingContext(vital, 'wearable')),
-                          style: Theme.of(context).textTheme.bodySmall)
+                          style: Theme.of(context).textTheme.bodySmall),
+                      if (vital['activity_context'] != null &&
+                          vital['activity_context'] != 'unknown')
+                        Text(
+                          'Activity context: ${vital['activity_context']}. Readings are still assessed with clinical context.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        )
                     ])),
                 if (vital['battery_percent'] != null)
                   Text('${vital['battery_percent']}%',
@@ -173,13 +189,18 @@ class _PatientHomeState extends State<PatientHome> {
       Text('Latest readings', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 10),
       Wrap(spacing: 10, runSpacing: 10, children: [
-        _Vital('PPG-derived heart rate',
+        _Vital(
+            'PPG-derived heart rate',
             _reading(vital, 'heart_rate_bpm', 'bpm'),
             _readingContext(vital, _source(vital['heart_rate_source'])),
-            Icons.favorite_outline, const Color(0xffC9546C)),
-        _Vital('PPG-derived SpO₂', _reading(vital, 'spo2_percent', '%'),
+            Icons.favorite_outline,
+            const Color(0xffC9546C)),
+        _Vital(
+            'PPG-derived SpO₂',
+            _reading(vital, 'spo2_percent', '%'),
             _readingContext(vital, _source(vital['spo2_source'])),
-            Icons.air_rounded, const Color(0xff317D9D)),
+            Icons.air_rounded,
+            const Color(0xff317D9D)),
         _Vital(
             'Device / skin-adjacent temperature',
             _reading(vital, 'skin_adjacent_temperature_c', '°C'),
@@ -196,6 +217,10 @@ class _PatientHomeState extends State<PatientHome> {
             const Color(0xff7062A6))
       ]),
       const SizedBox(height: 20),
+      _labStatus(),
+      const SizedBox(height: 12),
+      _guidanceStatus(),
+      const SizedBox(height: 20),
       Text('Next step', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 8),
       _task((_data['care_plan'] as List? ?? const []).isEmpty
@@ -210,6 +235,9 @@ class _PatientHomeState extends State<PatientHome> {
 
   Widget _plan() {
     final tasks = _data['care_plan'] as List<dynamic>? ?? const [];
+    final wellbeing = _map(_data['wellbeing']);
+    final completedCheckins = wellbeing['completed_this_week'] ?? 0;
+    final recommendedCheckins = wellbeing['recommended_checkins_per_week'] ?? 2;
     return ListView(padding: const EdgeInsets.all(20), children: [
       Text('Your care plan', style: Theme.of(context).textTheme.headlineSmall),
       const SizedBox(height: 6),
@@ -222,6 +250,33 @@ class _PatientHomeState extends State<PatientHome> {
             text: 'No care-plan tasks are due.'),
       ...tasks.whereType<Map>().map((t) => _task(t)),
       const SizedBox(height: 12),
+      _healthAction(
+          icon: Icons.biotech_outlined,
+          title: 'Lab result follow-up',
+          detail:
+              'Paste confirmed glucose or thyroid values for clinician review.',
+          action: 'Add a result',
+          onPressed: _openLabResults),
+      const SizedBox(height: 10),
+      _healthAction(
+          icon: Icons.self_improvement_outlined,
+          title: 'Twice-weekly wellbeing check-in',
+          detail:
+              '$completedCheckins of $recommendedCheckins check-ins this week. A five-question support check-in, not a diagnosis.',
+          action: 'Start check-in',
+          onPressed: _openWellbeing),
+      const SizedBox(height: 10),
+      _activityStatus(),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+          onPressed: _openMessages,
+          icon: const Icon(Icons.forum_outlined),
+          label: Text(
+              (_map(_data['messages'])['unread_from_care_team'] as int? ?? 0) >
+                      0
+                  ? 'Ask your care team • new reply'
+                  : 'Ask your care team')),
+      const SizedBox(height: 10),
       OutlinedButton.icon(
           onPressed: _report,
           icon: const Icon(Icons.edit_note_outlined),
@@ -251,6 +306,11 @@ class _PatientHomeState extends State<PatientHome> {
           onPressed: _report,
           icon: const Icon(Icons.edit_note_outlined),
           label: const Text('Report symptoms to my care team')),
+      const SizedBox(height: 10),
+      OutlinedButton.icon(
+          onPressed: _openAssistant,
+          icon: const Icon(Icons.auto_awesome_outlined),
+          label: const Text('Ask MaatriCare AI')),
       const SizedBox(height: 24),
       Text('Urgent warning signs',
           style: Theme.of(context).textTheme.titleLarge),
@@ -285,6 +345,11 @@ class _PatientHomeState extends State<PatientHome> {
           'Emergency contact',
           p['emergency_contact_name'] as String? ??
               'Set up with your care team'),
+      const SizedBox(height: 8),
+      OutlinedButton.icon(
+          onPressed: _openClinicalProfile,
+          icon: const Icon(Icons.medical_information_outlined),
+          label: const Text('Update health history for review')),
       const SizedBox(height: 18),
       Text('Sharing choices', style: Theme.of(context).textTheme.titleLarge),
       const Text('Optional sharing can be changed at any time.'),
@@ -369,6 +434,217 @@ class _PatientHomeState extends State<PatientHome> {
       leading: Icon(icon, color: MaatriTokens.primary),
       title: Text(title),
       subtitle: Text(detail));
+
+  Widget _labStatus() {
+    final labs = _data['lab_results'] as List<dynamic>? ?? const [];
+    if (labs.isEmpty) {
+      return _healthAction(
+          icon: Icons.biotech_outlined,
+          title: 'Lab result follow-up',
+          detail:
+              'When your clinician recommends it, add confirmed gestational diabetes or thyroid results for review.',
+          action: 'Add a result',
+          onPressed: _openLabResults);
+    }
+    final latest = labs.first is Map
+        ? Map<String, dynamic>.from(labs.first as Map)
+        : const <String, dynamic>{};
+    final needsReview = latest['reference_status'] == 'needs_clinician_review';
+    return _healthAction(
+        icon: Icons.pending_actions_outlined,
+        title: needsReview
+            ? 'Clinician follow-up recommended'
+            : 'Lab result pending review',
+        detail: needsReview
+            ? 'Your care team recommends follow-up. Use the message feature for non-urgent questions.'
+            : '${latest['category'] ?? 'Result'} • ${latest['review_status'] ?? 'pending clinician review'}',
+        action: 'View / add result',
+        onPressed: _openLabResults);
+  }
+
+  Widget _alertStatus() {
+    final alerts = _data['active_alerts'] as List<dynamic>? ?? const [];
+    final alert = alerts.isEmpty || alerts.first is! Map
+        ? const <String, dynamic>{}
+        : Map<String, dynamic>.from(alerts.first as Map);
+    final severity = alert['severity'] as String? ?? 'normal';
+    final (label, color, icon) = switch (severity) {
+      'info' => (
+          'Recheck required',
+          MaatriTokens.warning,
+          Icons.refresh_rounded
+        ),
+      'warning' => (
+          'Clinical review recommended',
+          MaatriTokens.warning,
+          Icons.medical_services_outlined
+        ),
+      'critical' => (
+          'Urgent medical attention required',
+          MaatriTokens.critical,
+          Icons.warning_rounded
+        ),
+      _ => ('Normal', MaatriTokens.success, Icons.check_circle_outline),
+    };
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(14)),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Icon(icon, color: color),
+        const SizedBox(width: 10),
+        Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+          Text(alert.isEmpty
+              ? 'No active care-team alert is shown.'
+              : (alert['message'] as String? ??
+                  'Follow the guidance from your care team.')),
+        ])),
+      ]),
+    );
+  }
+
+  Widget _guidanceStatus() {
+    final guidance = _data['guidance'] as List<dynamic>? ?? const [];
+    if (guidance.isEmpty) return const SizedBox.shrink();
+    final latest = guidance.first is Map
+        ? Map<String, dynamic>.from(guidance.first as Map)
+        : const <String, dynamic>{};
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Row(children: [
+            Icon(Icons.verified_outlined, color: MaatriTokens.primary),
+            SizedBox(width: 10),
+            Text('Clinician-approved support',
+                style: TextStyle(fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 8),
+          Text(latest['title'] as String? ?? 'Care-team guidance'),
+          if (latest['body'] is String) ...[
+            const SizedBox(height: 4),
+            Text(latest['body'] as String),
+          ],
+          const SizedBox(height: 6),
+          const Text(
+              'Follow the plan agreed with your clinician or dietitian. Do not change medicines based on this app.',
+              style: TextStyle(fontSize: 12)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _activityStatus() {
+    final activity = _map(_data['activity']);
+    final clearance = activity['activity_clearance'] as String? ??
+        _map(_data['clinical_profile'])['activity_clearance'] as String? ??
+        'not_recorded';
+    final minutes = activity['today_minutes'] as int? ?? 0;
+    return _healthAction(
+      icon: Icons.directions_walk_outlined,
+      title: 'Walking & activity',
+      detail: clearance == 'cleared_by_clinician'
+          ? '$minutes minutes recorded today. Wearable automatic tracking appears only after its classifier is validated.'
+          : 'Ask your care team before starting or tracking a walking routine.',
+      action: 'View activity',
+      onPressed: _openActivity,
+    );
+  }
+
+  Widget _healthAction({
+    required IconData icon,
+    required String title,
+    required String detail,
+    required String action,
+    required VoidCallback onPressed,
+  }) =>
+      Card(
+          child: Padding(
+              padding: const EdgeInsets.all(16),
+              child:
+                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Icon(icon, color: MaatriTokens.primary),
+                const SizedBox(width: 12),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(title,
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const SizedBox(height: 3),
+                      Text(detail),
+                      TextButton(onPressed: onPressed, child: Text(action)),
+                    ])),
+              ])));
+
+  Future<void> _showLabOnboarding() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.health_and_safety_outlined,
+            color: MaatriTokens.primary),
+        title: const Text('A quick health reminder'),
+        content: const Text(
+            'At the time recommended by your clinician, please complete gestational diabetes and thyroid testing. You can add confirmed values here for clinician review. This app will not diagnose a result or create a diet plan on its own.'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Later')),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('I understand')),
+        ],
+      ),
+    );
+    try {
+      await _api.acknowledgeLabOnboarding();
+    } catch (_) {
+      // It is safe to show the reminder again if a connection prevents the
+      // acknowledgement from being saved.
+      _labPromptShown = false;
+    }
+  }
+
+  Future<void> _openLabResults() async {
+    final saved = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => PatientLabResultPage(api: _api)));
+    if (saved == true) await _load();
+  }
+
+  Future<void> _openWellbeing() async {
+    final sent = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => PatientWellbeingPage(api: _api)));
+    if (sent == true) await _load();
+  }
+
+  Future<void> _openMessages() async {
+    await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => PatientCareMessagesPage(api: _api)));
+    await _load();
+  }
+
+  Future<void> _openAssistant() async {
+    await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => PatientAssistantPage(api: _api)));
+  }
+
+  Future<void> _openActivity() async {
+    await Navigator.of(context).push<void>(
+        MaterialPageRoute(builder: (_) => PatientActivityPage(api: _api)));
+    await _load();
+  }
+
+  Future<void> _openClinicalProfile() async {
+    await Navigator.of(context).push<void>(MaterialPageRoute(
+        builder: (_) => PatientClinicalProfilePage(api: _api)));
+    await _load();
+  }
+
   Future<void> _complete(Map task) async {
     final id = task['id'] as String?;
     if (id == null) return;
@@ -459,10 +735,7 @@ class _PatientHomeState extends State<PatientHome> {
   }
 
   bool _hasValidatedBloodPressure(Map<String, dynamic> vital) {
-    const sources = {
-      'validated_cuff',
-      'clinician_entered'
-    };
+    const sources = {'validated_cuff', 'clinician_entered'};
     return sources.contains(vital['blood_pressure_source']) &&
         vital['systolic_bp'] is num &&
         vital['diastolic_bp'] is num;

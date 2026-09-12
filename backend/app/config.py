@@ -64,9 +64,26 @@ class Config:
     DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes"}
     DEMO_IN_MEMORY = os.getenv("DEMO_IN_MEMORY", "false").strip().lower() in {"1", "true", "yes"}
     JSON_SORT_KEYS = False
-    MAX_CONTENT_LENGTH = _positive_int("MAX_CONTENT_LENGTH", 16384)
+    # The global limit admits a small patient report. Telemetry receives a
+    # separate, much smaller route-level limit in the app factory.
+    MAX_CONTENT_LENGTH = _positive_int("MAX_CONTENT_LENGTH", 4_000_000)
+    REPORT_UPLOAD_MAX_BYTES = _positive_int("REPORT_UPLOAD_MAX_BYTES", 4_000_000)
+    TELEMETRY_MAX_CONTENT_LENGTH = _positive_int("TELEMETRY_MAX_CONTENT_LENGTH", 16_384)
     REALTIME_OUTBOX_BATCH_SIZE = _positive_int("REALTIME_OUTBOX_BATCH_SIZE", 100)
     DEVICE_OFFLINE_AFTER_MINUTES = _positive_int("DEVICE_OFFLINE_AFTER_MINUTES", 30)
+    # Optional. When unset, an urgent wellbeing disclosure remains visible to
+    # the care team but WhatsApp delivery is reported as not configured.
+    TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+    TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+    TWILIO_WHATSAPP_FROM = os.getenv("TWILIO_WHATSAPP_FROM")
+    TWILIO_TIMEOUT_SECONDS = _positive_int("TWILIO_TIMEOUT_SECONDS", 10)
+    # Optional server-only MaatriCare education assistant. Leave the key
+    # unset to disable the endpoint without affecting patient care APIs.
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-5-mini").strip()
+    OPENAI_CHAT_TIMEOUT_SECONDS = _positive_int("OPENAI_CHAT_TIMEOUT_SECONDS", 20)
+    OPENAI_CHAT_MAX_REQUESTS = _positive_int("OPENAI_CHAT_MAX_REQUESTS", 12)
+    OPENAI_CHAT_WINDOW_SECONDS = _positive_int("OPENAI_CHAT_WINDOW_SECONDS", 900)
 
     @classmethod
     def production_configuration_errors(cls, values: Mapping[str, object] | None = None) -> list[str]:

@@ -30,7 +30,6 @@ _MEASUREMENT_FIELDS = (
     "systolic_bp",
     "diastolic_bp",
     "battery_percent",
-    "blood_loss_ml",
 )
 _INTEGER_FIELDS = {"heart_rate_bpm", "systolic_bp", "diastolic_bp", "battery_percent"}
 _RANGES = {
@@ -44,7 +43,6 @@ _RANGES = {
     "systolic_bp": (50, 260),
     "diastolic_bp": (30, 180),
     "battery_percent": (0, 100),
-    "blood_loss_ml": (0, 10000),
 }
 _MOTION_NUMERIC_FIELDS = {
     "impact_g": (0, 20),
@@ -52,6 +50,7 @@ _MOTION_NUMERIC_FIELDS = {
     "post_impact_immobile_seconds": (0, 3600),
     "classifier_confidence": (0, 1),
 }
+_ACTIVITY_STATES = {"resting", "walking", "exercising", "unknown"}
 _EVENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 _SENSOR_STATUSES = {"ok", "contact_lost", "sensor_error", "unavailable", "unknown"}
 _HEART_AND_SPO2_SOURCES = {"wearable_ppg", "external_validated_device", "clinician_entered"}
@@ -126,6 +125,11 @@ def _parse_motion(value):
     motion = dict(value)
     if "fall_detected" in motion and not isinstance(motion["fall_detected"], bool):
         abort(400, description="motion.fall_detected must be a boolean")
+    if "activity_state" in motion:
+        if motion["activity_state"] not in _ACTIVITY_STATES:
+            abort(400, description="motion.activity_state is invalid")
+        if motion["activity_state"] != "unknown" and "classifier_confidence" not in motion:
+            abort(400, description="motion.classifier_confidence is required with an activity_state")
     for field, (lower, upper) in _MOTION_NUMERIC_FIELDS.items():
         if field in motion and motion[field] is not None:
             motion[field] = _number(motion[field], f"motion.{field}", lower, upper)
@@ -136,12 +140,16 @@ def _payload():
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
         abort(400, description="A JSON object is required")
+    if "blood_loss_ml" in data or "bleeding_reported" in data:
+        abort(400, description="Postpartum haemorrhage monitoring is outside the wearable MVP")
 
     event_id = data.get("event_id")
     if not isinstance(event_id, str) or not _EVENT_ID_PATTERN.fullmatch(event_id):
         abort(400, description="event_id is required (1-128 URL-safe characters)")
 
-    parsed = {}
+    # Compatibility columns remain in the historical database schema but are
+    # deliberately never accepted from the wearable MVP.
+    parsed = {"blood_loss_ml": None}
     for field in _MEASUREMENT_FIELDS:
         value = data.get(field)
         parsed[field] = (
@@ -192,9 +200,7 @@ def _payload():
     if not any(value is not None for value in parsed.values()) and not motion:
         abort(400, description="At least one measurement or motion field is required")
 
-    bleeding_reported = data.get("bleeding_reported", False)
-    if not isinstance(bleeding_reported, bool):
-        abort(400, description="bleeding_reported must be a boolean")
+    bleeding_reported = False
     source_sequence = data.get("source_sequence")
     if source_sequence is not None:
         source_sequence = _number(source_sequence, "source_sequence", 0, 2_147_483_647, integer=True)

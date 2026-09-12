@@ -51,3 +51,13 @@ class PublicVitalTest(unittest.TestCase):
             now=datetime(2026, 9, 8, 10, 11, tzinfo=timezone.utc),
         )
         self.assertEqual(result["freshness"], "stale")
+
+    def test_qualified_activity_is_context_not_a_clinical_conclusion(self):
+        result = public_vital(
+            {
+                "captured_at": datetime.now(timezone.utc),
+                "sensor_status": "ok",
+                "motion": {"activity_state": "walking", "classifier_confidence": 0.9},
+            }
+        )
+        self.assertEqual(result["activity_context"], "walking")

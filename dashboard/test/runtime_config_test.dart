@@ -28,4 +28,23 @@ void main() {
     expect(reading.heartRateSource, 'wearable_ppg');
     expect(reading.observationStatus, 'stale');
   });
+
+  test('patient detail retains the assigned watch identifier', () {
+    final detail = PatientDetail.fromJson({
+      'patient': {
+        'id': 'patient-1',
+        'full_name': 'Presentation patient',
+        'medical_record_number': 'MW-001',
+      },
+      'device': {
+        'id': '5b9ebccd-a951-47f9-8a89-15b7fafa346a',
+        'serial_number': 'MW-XIAO-001',
+        'firmware_version': '1.0.0',
+        'last_seen_at': '2026-09-12T05:55:00Z',
+      },
+    });
+
+    expect(detail.device?.id, '5b9ebccd-a951-47f9-8a89-15b7fafa346a');
+    expect(detail.device?.serialNumber, 'MW-XIAO-001');
+  });
 }

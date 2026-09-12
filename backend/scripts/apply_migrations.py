@@ -1,7 +1,7 @@
 """Apply only missing MaatriWatch schema phases to the configured Postgres DB.
 
 This is intentionally small for the hackathon demo: it inspects the schema,
-then applies 001 through 007 in order as needed. It never prints the
+then applies 001 through 009 in order as needed. It never prints the
 connection URL or values from .env.
 """
 
@@ -60,6 +60,8 @@ def main() -> int:
                 phase_five_missing = not initial_missing and not column_exists(cursor, "vital_readings", "ambient_temperature_c")
                 phase_six_missing = not initial_missing and not column_exists(cursor, "vital_readings", "measurement_metadata")
                 phase_seven_missing = not initial_missing and not table_exists(cursor, "patient_invitations")
+                phase_eight_missing = not initial_missing and not table_exists(cursor, "patient_lab_results")
+                phase_nine_missing = not initial_missing and not table_exists(cursor, "patient_clinical_profiles")
             if initial_missing:
                 apply_file(connection, "001_initial_schema.sql")
                 phase_two_missing = True
@@ -68,6 +70,8 @@ def main() -> int:
                 phase_five_missing = True
                 phase_six_missing = True
                 phase_seven_missing = True
+                phase_eight_missing = True
+                phase_nine_missing = True
             if phase_two_missing:
                 apply_file(connection, "002_ingestion_alerting.sql")
             if phase_three_missing:
@@ -80,6 +84,10 @@ def main() -> int:
                 apply_file(connection, "006_measurement_integrity.sql")
             if phase_seven_missing:
                 apply_file(connection, "007_activation_and_device_health.sql")
+            if phase_eight_missing:
+                apply_file(connection, "008_patient_lab_and_wellbeing.sql")
+            if phase_nine_missing:
+                apply_file(connection, "009_clinical_followup_and_validation.sql")
     except OperationalError:
         print("Could not connect to Postgres. Check DATABASE_URL without printing it.", file=sys.stderr)
         return 1

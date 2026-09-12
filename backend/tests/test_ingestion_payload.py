@@ -80,6 +80,32 @@ class TelemetryPayloadTest(unittest.TestCase):
             with self.assertRaises(BadRequest):
                 _payload()
 
+    def test_activity_context_requires_a_classifier_confidence(self):
+        with self.app.test_request_context(
+            "/api/v1/ingest/telemetry",
+            method="POST",
+            json={
+                "event_id": "sim:session:activity",
+                "captured_at": "2026-08-14T10:12:00Z",
+                "motion": {"activity_state": "walking"},
+            },
+        ):
+            with self.assertRaises(BadRequest):
+                _payload()
+
+    def test_pph_fields_are_rejected_outside_the_wearable_mvp(self):
+        with self.app.test_request_context(
+            "/api/v1/ingest/telemetry",
+            method="POST",
+            json={
+                "event_id": "sim:session:no-pph",
+                "captured_at": "2026-08-14T10:12:00Z",
+                "blood_loss_ml": 350,
+            },
+        ):
+            with self.assertRaises(BadRequest):
+                _payload()
+
 
 if __name__ == "__main__":
     unittest.main()

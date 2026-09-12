@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
@@ -25,6 +26,77 @@ class PatientApi {
       _request('PUT', '/patient/consents/$type', body: {'granted': granted});
   Future<Map<String, dynamic>> completeTask(String id, String status) =>
       _request('PATCH', '/patient/care-plan/$id', body: {'status': status});
+  Future<Map<String, dynamic>> acknowledgeLabOnboarding() =>
+      _request('POST', '/patient/lab-onboarding/acknowledge');
+  Future<Map<String, dynamic>> extractLabResult(
+          String category, String reportText) =>
+      _request('POST', '/patient/lab-results/extract',
+          body: {'category': category, 'report_text': reportText});
+  Future<Map<String, dynamic>> submitLabResult(Map<String, dynamic> result) =>
+      _request('POST', '/patient/lab-results', body: result);
+  Future<Map<String, dynamic>> submitWellbeingCheckin(
+          Map<String, String> answers, bool guardianNotificationConsent) =>
+      _request('POST', '/patient/wellbeing-checkins', body: {
+        'answers': answers,
+        'guardian_notification_consent': guardianNotificationConsent,
+      });
+  Future<Map<String, dynamic>> clinicalProfile() =>
+      _request('GET', '/patient/clinical-profile');
+  Future<Map<String, dynamic>> updateClinicalProfile(
+          Map<String, dynamic> profile) =>
+      _request('PUT', '/patient/clinical-profile', body: profile);
+  Future<Map<String, dynamic>> messages() =>
+      _request('GET', '/patient/messages');
+  Future<Map<String, dynamic>> sendMessage(String body, {String? inReplyTo}) =>
+      _request('POST', '/patient/messages', body: {
+        'body': body,
+        if (inReplyTo != null) 'in_reply_to': inReplyTo,
+      });
+  Future<Map<String, dynamic>> askAssistant(String message) =>
+      _request('POST', '/patient/assistant', body: {'message': message});
+  Future<Map<String, dynamic>> activity() =>
+      _request('GET', '/patient/activity');
+  Future<Map<String, dynamic>> recordActivity({
+    required String activityType,
+    required String sessionPart,
+    required int minutes,
+    String? note,
+  }) =>
+      _request('POST', '/patient/activity', body: {
+        'activity_type': activityType,
+        'session_part': sessionPart,
+        'minutes': minutes,
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      });
+  Future<Map<String, dynamic>> reportDocuments() =>
+      _request('GET', '/patient/report-documents');
+
+  Future<Map<String, dynamic>> uploadReportDocument({
+    required Uint8List bytes,
+    required String filename,
+    required String mediaType,
+    required String documentType,
+    String? confirmedText,
+  }) async {
+    final token = await FirebaseAuth.instance.currentUser?.getIdToken();
+    if (token == null || token.isEmpty) {
+      throw const PatientApiException('Please sign in again to continue.', 401);
+    }
+    final request = http.MultipartRequest(
+        'POST', Uri.parse('$_baseUrl/patient/report-documents'))
+      ..headers.addAll(
+          {'Accept': 'application/json', 'Authorization': 'Bearer $token'})
+      ..fields.addAll({
+        'document_type': documentType,
+        'media_type': mediaType,
+        if (confirmedText != null && confirmedText.trim().isNotEmpty)
+          'report_text': confirmedText.trim(),
+      })
+      ..files.add(
+          http.MultipartFile.fromBytes('document', bytes, filename: filename));
+    final response = await http.Response.fromStream(await request.send());
+    return _responseValue(response);
+  }
 
   Future<Map<String, dynamic>> _request(String method, String path,
       {Map<String, dynamic>? body}) async {
@@ -41,6 +113,10 @@ class PatientApi {
           })
           ..body = body == null ? '' : jsonEncode(body))
         .then(http.Response.fromStream);
+    return _responseValue(response);
+  }
+
+  Map<String, dynamic> _responseValue(http.Response response) {
     Object? decoded;
     try {
       decoded = response.body.isEmpty
@@ -48,7 +124,8 @@ class PatientApi {
           : jsonDecode(response.body);
     } on FormatException {
       throw const PatientApiException(
-          'The care service returned an invalid response. Please try again.', 502);
+          'The care service returned an invalid response. Please try again.',
+          502);
     }
     final value = decoded is Map
         ? Map<String, dynamic>.from(decoded)

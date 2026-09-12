@@ -11,10 +11,10 @@ class StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = MaatriTokens.statusColor(status);
     final label = switch (status) {
-      'critical' => 'Critical',
-      'warning' => 'Needs review',
-      'info' => 'Information',
-      'normal' => 'Stable',
+      'critical' => 'Urgent attention',
+      'warning' => 'Clinical review',
+      'info' => 'Recheck required',
+      'normal' => 'Normal',
       'open' => 'Open',
       'acknowledged' => 'Acknowledged',
       'escalated' => 'Escalated',
