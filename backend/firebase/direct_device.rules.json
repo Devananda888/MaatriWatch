@@ -1,0 +1,40 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "live_vitals": {
+      "$hospitalId": {
+        ".read": "auth != null && root.child('access').child(auth.uid).child($hospitalId).child('active').val() === true && root.child('access').child(auth.uid).child($hospitalId).child('can_read_all_live_vitals').val() === true",
+        "$patientId": {
+          ".read": "auth != null && root.child('patient_access').child(auth.uid).child($hospitalId).child($patientId).val() === true",
+          ".write": "auth != null && root.child('device_assignments').child(auth.uid).child('hospital_id').val() === $hospitalId && root.child('device_assignments').child(auth.uid).child('patient_id').val() === $patientId && newData.child('device_id').val() === root.child('device_assignments').child(auth.uid).child('device_id').val()",
+          ".validate": "newData.hasChildren(['device_id', 'source_event_id', 'captured_at', 'observed_at', 'sensor_status']) && newData.child('device_id').isString() && newData.child('source_event_id').isString() && newData.child('captured_at').isString() && newData.child('observed_at').isString() && newData.child('sensor_status').isString() && (!newData.child('heart_rate_bpm').exists() || newData.child('heart_rate_bpm').val() === null || (newData.child('heart_rate_bpm').isNumber() && newData.child('heart_rate_bpm').val() >= 20 && newData.child('heart_rate_bpm').val() <= 260)) && (!newData.child('spo2_percent').exists() || newData.child('spo2_percent').val() === null || (newData.child('spo2_percent').isNumber() && newData.child('spo2_percent').val() >= 0 && newData.child('spo2_percent').val() <= 100)) && (!newData.child('skin_adjacent_temperature_c').exists() || newData.child('skin_adjacent_temperature_c').val() === null || (newData.child('skin_adjacent_temperature_c').isNumber() && newData.child('skin_adjacent_temperature_c').val() >= 25 && newData.child('skin_adjacent_temperature_c').val() <= 45))"
+        }
+      }
+    },
+    "live_alerts": {
+      "$hospitalId": {
+        ".read": "auth != null && root.child('access').child(auth.uid).child($hospitalId).child('active').val() === true && root.child('access').child(auth.uid).child($hospitalId).child('can_read_alert_queue').val() === true",
+        ".write": false
+      }
+    },
+    "access": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "patient_access": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    },
+    "device_assignments": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
+      }
+    }
+  }
+}
