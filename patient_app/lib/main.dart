@@ -63,7 +63,11 @@ class MaatriWatchPatientApp extends StatelessWidget {
             (demoMode
                 ? const DemoPatientSignIn()
                 : (firebaseReady
-                    ? PatientAuthGate(auth: FirebaseAuth.instance)
+                    ? PatientAuthGate(
+                        auth: FirebaseAuth.instance,
+                        allowUnverifiedEmail:
+                            PatientRuntimeConfig.allowUnverifiedPatientDemo,
+                      )
                     : _ConfigurationScreen(
                         message: initializationError,
                         allowPresentationDemo: !kReleaseMode,

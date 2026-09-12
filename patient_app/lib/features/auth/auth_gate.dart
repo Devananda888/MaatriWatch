@@ -5,9 +5,14 @@ import '../../core/patient_realtime.dart';
 import '../patient/patient_home.dart';
 
 class PatientAuthGate extends StatelessWidget {
-  const PatientAuthGate({super.key, required this.auth});
+  const PatientAuthGate({
+    super.key,
+    required this.auth,
+    this.allowUnverifiedEmail = false,
+  });
 
   final FirebaseAuth auth;
+  final bool allowUnverifiedEmail;
 
   @override
   Widget build(BuildContext context) => StreamBuilder<User?>(
@@ -20,7 +25,7 @@ class PatientAuthGate extends StatelessWidget {
           if (user == null) {
             return PatientSignInPage(auth: auth);
           }
-          if (!user.emailVerified) {
+          if (!user.emailVerified && !allowUnverifiedEmail) {
             return _EmailVerificationPage(auth: auth, user: user);
           }
           return PatientHome(

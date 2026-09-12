@@ -77,7 +77,11 @@ def _document_upload(file, declared_media_type: str | None = None):
 
 
 def _patient_for_actor(cursor):
-    if not g.firebase_claims.get("demo") and g.firebase_claims.get("email_verified") is not True:
+    if (
+        not g.firebase_claims.get("demo")
+        and g.firebase_claims.get("email_verified") is not True
+        and not current_app.config.get("ALLOW_UNVERIFIED_PATIENT_DEMO")
+    ):
         abort(403, description="Verify the email address for this patient account before accessing care information")
     cursor.execute(
         """SELECT p.*, h.name AS hospital_name FROM patients p JOIN hospitals h ON h.id = p.hospital_id

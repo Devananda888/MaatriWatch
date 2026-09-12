@@ -8,6 +8,12 @@ abstract final class PatientRuntimeConfig {
   static const apiBaseUrl = String.fromEnvironment('API_BASE_URL');
   static const demoMode =
       bool.fromEnvironment('DEMO_MODE', defaultValue: false);
+  // Presentation-only compatibility switch. It is false unless explicitly
+  // supplied at build time and must be removed once email delivery is fixed.
+  static const allowUnverifiedPatientDemo = bool.fromEnvironment(
+    'ALLOW_UNVERIFIED_PATIENT_DEMO',
+    defaultValue: false,
+  );
 
   static String? validationError() {
     final value = apiBaseUrl.trim();

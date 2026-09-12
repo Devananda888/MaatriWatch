@@ -63,6 +63,12 @@ class Config:
     )
     DEMO_MODE = os.getenv("DEMO_MODE", "false").strip().lower() in {"1", "true", "yes"}
     DEMO_IN_MEMORY = os.getenv("DEMO_IN_MEMORY", "false").strip().lower() in {"1", "true", "yes"}
+    # Explicit, short-lived presentation escape hatch for a Firebase email
+    # delivery outage. It only relaxes patient email verification; account,
+    # active-patient, and Firebase-token checks still apply.
+    ALLOW_UNVERIFIED_PATIENT_DEMO = os.getenv(
+        "ALLOW_UNVERIFIED_PATIENT_DEMO", "false"
+    ).strip().lower() in {"1", "true", "yes"}
     JSON_SORT_KEYS = False
     # The global limit admits a small patient report. Telemetry receives a
     # separate, much smaller route-level limit in the app factory.
