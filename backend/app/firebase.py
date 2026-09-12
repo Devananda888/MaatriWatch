@@ -119,6 +119,28 @@ def sync_clinician_entitlements(firebase_uid: str, memberships: list[dict]) -> N
         current_app.logger.exception("Failed to refresh Firebase RTDB clinician entitlements")
 
 
+def sync_patient_live_vitals_access(
+    firebase_uid: str, hospital_id: str, patient_id: str
+) -> None:
+    """Grant this signed-in patient read-only access to their own live node.
+
+    PostgreSQL remains the authority for patient identity.  The small RTDB
+    projection merely lets the authenticated mobile app subscribe to
+    ``live_vitals/<hospital>/<patient>`` without opening the database to other
+    patients or anonymous clients.
+    """
+    if not current_app.config.get("FIREBASE_RTDB_READY"):
+        return
+    try:
+        db.reference(
+            f"patient_access/{firebase_uid}/{hospital_id}/{patient_id}"
+        ).set(True)
+    except Exception:
+        # The API response remains authoritative and usable even if the live
+        # overlay cannot be granted because RTDB is temporarily unavailable.
+        current_app.logger.exception("Failed to refresh Firebase RTDB patient entitlement")
+
+
 def publish_realtime_projection(topic: str, payload: dict):
     """Dispatch a durable outbox message to its Firebase RTDB projection."""
     if topic == "live_vitals":

@@ -11,6 +11,7 @@ from flask import Blueprint, abort, current_app, g, jsonify, request
 from .auth import require_firebase_user
 from .db import get_db
 from .device_health import device_health
+from .firebase import sync_patient_live_vitals_access
 from .guardian_notifications import send_guardian_support_request
 from .measurements import public_vital
 from .patient_workflows import (
@@ -200,6 +201,11 @@ def home():
         )
         unread_messages = cursor.fetchone()
     connection.commit()
+    # Grant only this authenticated patient the RTDB live-vitals node that
+    # matches the hospital/patient relationship verified above.
+    sync_patient_live_vitals_access(
+        g.actor["firebase_uid"], str(patient["hospital_id"]), str(patient["id"])
+    )
     return jsonify(
         {
             "patient": _row(patient),

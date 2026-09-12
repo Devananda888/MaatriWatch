@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:maatriwatch_patient_app/core/patient_api.dart';
+import 'package:maatriwatch_patient_app/core/patient_realtime.dart';
 import 'package:maatriwatch_patient_app/features/patient/patient_home.dart';
 import 'package:maatriwatch_patient_app/main.dart';
 
@@ -14,7 +17,11 @@ class _PatientApi extends PatientApi {
   Future<Map<String, dynamic>> home() async {
     if (denied) throw const PatientApiException('Account is not linked.', 403);
     return {
-      'patient': {'full_name': 'Test Patient'},
+      'patient': {
+        'id': 'patient-test-id',
+        'hospital_id': 'hospital-test-id',
+        'full_name': 'Test Patient',
+      },
       'latest_vital': {
         'heart_rate_bpm': 74,
         'spo2_percent': 98,
@@ -34,6 +41,17 @@ class _PatientApi extends PatientApi {
 
   @override
   Future<Map<String, dynamic>> consents() async => {'items': const []};
+}
+
+class _LiveVitals implements PatientLiveVitalsSource {
+  final controller = StreamController<Map<String, dynamic>?>.broadcast();
+
+  @override
+  Stream<Map<String, dynamic>?> latestForPatient({
+    required String hospitalId,
+    required String patientId,
+  }) =>
+      controller.stream;
 }
 
 void main() {
@@ -71,6 +89,29 @@ void main() {
     expect(find.text('PPG-derived heart rate'), findsOneWidget);
     expect(find.textContaining('MAX30102 PPG'), findsWidgets);
     expect(find.text('Device / skin-adjacent temperature'), findsOneWidget);
+  });
+
+  testWidgets('uses the Firebase live vital overlay when it arrives',
+      (tester) async {
+    final liveVitals = _LiveVitals();
+    await tester.pumpWidget(MaterialApp(
+        home: PatientHome(api: _PatientApi(), liveVitals: liveVitals)));
+    await tester.pumpAndSettle();
+    liveVitals.controller.add({
+      'heart_rate_bpm': 81,
+      'spo2_percent': 97,
+      'skin_adjacent_temperature_c': 34.2,
+      'heart_rate_source': 'wearable_ppg',
+      'spo2_source': 'wearable_ppg',
+      'temperature_source': 'wearable_skin_adjacent',
+      'contact_detected': true,
+      'captured_at': DateTime.now().toUtc().toIso8601String(),
+      'freshness': 'current',
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('81 bpm'), findsOneWidget);
+    expect(find.text('97 %'), findsOneWidget);
+    await liveVitals.controller.close();
   });
 
   testWidgets('shows an account-access state instead of offline fallback',

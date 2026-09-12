@@ -1,16 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/design_tokens.dart';
 import '../../core/patient_api.dart';
+import '../../core/patient_realtime.dart';
 import 'patient_followup.dart';
 import 'patient_health_actions.dart';
 
 /// Patient-facing safety companion. It routes concerns to care teams; it does not diagnose.
 class PatientHome extends StatefulWidget {
-  const PatientHome({super.key, this.api, this.onSignOut, this.onAccessDenied});
+  const PatientHome({
+    super.key,
+    this.api,
+    this.onSignOut,
+    this.onAccessDenied,
+    this.liveVitals,
+  });
   final PatientApi? api;
   final Future<void> Function()? onSignOut;
   final Future<void> Function()? onAccessDenied;
+  final PatientLiveVitalsSource? liveVitals;
   @override
   State<PatientHome> createState() => _PatientHomeState();
 }
@@ -24,12 +34,22 @@ class _PatientHomeState extends State<PatientHome> {
   bool _labPromptShown = false;
   String? _offline;
   String? _accessDenied;
+  String? _liveVitalsMessage;
+  Map<String, dynamic>? _firebaseVital;
+  StreamSubscription<Map<String, dynamic>?>? _liveVitalsSubscription;
+  String? _liveVitalsPath;
   PatientApi get _api => widget.api ?? (_fallbackApi ??= PatientApi());
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _liveVitalsSubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -49,6 +69,7 @@ class _PatientHomeState extends State<PatientHome> {
               item['consent_type'] as String: item['granted'] == true
           };
         });
+        _listenForLiveVitals(values[0]);
         if (_data['lab_onboarding_pending'] == true && !_labPromptShown) {
           _labPromptShown = true;
           WidgetsBinding.instance
@@ -71,6 +92,37 @@ class _PatientHomeState extends State<PatientHome> {
       }
     }
     if (mounted) setState(() => _busy = false);
+  }
+
+  void _listenForLiveVitals(Map<String, dynamic> home) {
+    final source = widget.liveVitals;
+    final patient = _map(home['patient']);
+    final hospitalId = patient['hospital_id'];
+    final patientId = patient['id'];
+    if (source == null || hospitalId is! String || patientId is! String) return;
+
+    final path = '$hospitalId/$patientId';
+    if (_liveVitalsPath == path) return;
+    _liveVitalsPath = path;
+    _liveVitalsSubscription?.cancel();
+    _liveVitalsSubscription = source
+        .latestForPatient(hospitalId: hospitalId, patientId: patientId)
+        .listen(
+      (vital) {
+        if (!mounted) return;
+        setState(() {
+          _firebaseVital = vital;
+          _liveVitalsMessage =
+              vital == null ? 'Waiting for a current watch reading.' : null;
+        });
+      },
+      onError: (_) {
+        if (mounted) {
+          setState(() => _liveVitalsMessage =
+              'Live watch updates are unavailable. Showing the last saved reading.');
+        }
+      },
+    );
   }
 
   @override
@@ -114,7 +166,9 @@ class _PatientHomeState extends State<PatientHome> {
 
   Widget _home() {
     final patient = _map(_data['patient']);
-    final vital = _map(_data['latest_vital']);
+    // Firebase carries the newest live device snapshot. The authenticated API
+    // response remains the fallback when Firebase has no node or is offline.
+    final vital = _firebaseVital ?? _map(_data['latest_vital']);
     final device = _map(_data['device']);
     final deviceHealth = _map(_data['device_health']);
     return ListView(padding: const EdgeInsets.all(20), children: [
@@ -141,6 +195,11 @@ class _PatientHomeState extends State<PatientHome> {
         _Notice(
             icon: Icons.cloud_off_outlined,
             text: _offline!,
+            color: MaatriTokens.warning),
+      if (_liveVitalsMessage != null)
+        _Notice(
+            icon: Icons.watch_later_outlined,
+            text: _liveVitalsMessage!,
             color: MaatriTokens.warning),
       const SizedBox(height: 16),
       _Safety(onTap: () => setState(() => _page = 2)),

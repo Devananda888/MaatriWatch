@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../../core/patient_realtime.dart';
 import '../patient/patient_home.dart';
 
 class PatientAuthGate extends StatelessWidget {
@@ -22,7 +23,11 @@ class PatientAuthGate extends StatelessWidget {
           if (!user.emailVerified) {
             return _EmailVerificationPage(auth: auth, user: user);
           }
-          return PatientHome(onSignOut: auth.signOut, onAccessDenied: auth.signOut);
+          return PatientHome(
+            onSignOut: auth.signOut,
+            onAccessDenied: auth.signOut,
+            liveVitals: FirebasePatientLiveVitalsSource(),
+          );
         },
       );
 }
