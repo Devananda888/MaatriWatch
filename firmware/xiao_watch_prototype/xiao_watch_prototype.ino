@@ -120,6 +120,58 @@ WiFiClientSecure apiClient;
 WiFiClientSecure firebaseClient;
 String firebaseIdToken, firebaseRefreshToken;
 uint32_t firebaseTokenReceivedAt = 0, firebaseTokenLifetimeMs = 0;
+
+// Firebase Authentication and the Firebase Realtime Database endpoint use
+// Google Trust Services roots. Keeping this public CA bundle in firmware
+// avoids asking a person assembling a prototype watch to locate and paste a
+// certificate into secrets.h, while retaining TLS certificate validation.
+// Do not replace these calls with WiFiClientSecure::setInsecure().
+static const char FIREBASE_GOOGLE_CA_CERTS[] = R"EOF(
+-----BEGIN CERTIFICATE-----
+MIIFVzCCAz+gAwIBAgINAgPlk28xsBNJiGuiFzANBgkqhkiG9w0BAQwFADBHMQsw
+CQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEU
+MBIGA1UEAxMLR1RTIFJvb3QgUjEwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAw
+MDAwWjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZp
+Y2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjEwggIiMA0GCSqGSIb3DQEBAQUA
+A4ICDwAwggIKAoICAQC2EQKLHuOhd5s73L+UPreVp0A8of2C+X0yBoJx9vaMf/vo
+27xqLpeXo4xL+Sv2sfnOhB2x+cWX3u+58qPpvBKJXqeqUqv4IyfLpLGcY9vXmX7w
+Cl7raKb0xlpHDU0QM+NOsROjyBhsS+z8CZDfnWQpJSMHobTSPS5g4M/SCYe7zUjw
+TcLCeoiKu7rPWRnWr4+wB7CeMfGCwcDfLqZtbBkOtdh+JhpFAz2weaSUKK0Pfybl
+qAj+lug8aJRT7oM6iCsVlgmy4HqMLnXWnOunVmSPlk9orj2XwoSPwLxAwAtcvfaH
+szVsrBhQf4TgTM2S0yDpM7xSma8ytSmzJSq0SPly4cpk9+aCEI3oncKKiPo4Zor8
+Y/kB+Xj9e1x3+naH+uzfsQ55lVe0vSbv1gHR6xYKu44LtcXFilWr06zqkUspzBmk
+MiVOKvFlRNACzqrOSbTqn3yDsEB750Orp2yjj32JgfpMpf/VjsPOS+C12LOORc92
+wO1AK/1TD7Cn1TsNsYqiA94xrcx36m97PtbfkSIS5r762DL8EGMUUXLeXdYWk70p
+aDPvOmbsB4om3xPXV2V4J95eSRQAogB/mqghtqmxlbCluQ0WEdrHbEg8QOB+DVrN
+VjzRlwW5y0vtOUucxD/SVRNuJLDWcfr0wbrM7Rv1/oFB2ACYPTrIrnqYNxgFlQID
+AQABo0IwQDAOBgNVHQ8BAf8EBAMCAYYwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4E
+FgQU5K8rJnEaK0gnhS9SZizv8IkTcT4wDQYJKoZIhvcNAQEMBQADggIBAJ+qQibb
+C5u+/x6Wki4+omVKapi6Ist9wTrYggoGxval3sBOh2Z5ofmmWJyq+bXmYOfg6LEe
+QkEzCzc9zolwFcq1JKjPa7XSQCGYzyI0zzvFIoTgxQ6KfF2I5DUkzps+GlQebtuy
+h6f88/qBVRRiClmpIgUxPoLW7ttXNLwzldMXG+gnoot7TiYaelpkttGsN/H9oPM4
+7HLwEXWdyzRSjeZ2axfG34arJ45JK3VmgRAhpuo+9K4l/3wV3s6MJT/KYnAK9y8J
+ZgfIPxz88NtFMN9iiMG1D53Dn0reWVlHxYciNuaCp+0KueIHoI17eko8cdLiA6Ef
+MgfdG+RCzgwARWGAtQsgWSl4vflVy2PFPEz0tv/bal8xa5meLMFrUKTX5hgUvYU/
+Z6tGn6D/Qqc6f1zLXbBwHSs09dR2CQzreExZBfMzQsNhFRAbd03OIozUhfJFfbdT
+6u9AWpQKXCBfTkBdYiJ23//OYb2MI3jSNwLgjt7RETeJ9r/tSQdirpLsQBqvFAnZ
+0E6yove+7u7Y/9waLd64NnHi/Hm3lCXRSHNboTXns5lndcEZOitHTtNCjv0xyBZm
+2tIMPNuzjsmhDYAPexZ3FL//2wmUspO8IFgV6dtxQ/PeEMMA3KgqlbbC1j+Qa3bb
+bP6MvPJwNQzcmRk13NfIRmPVNnGuV/u3gm3c
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIICCTCCAY6gAwIBAgINAgPlwGjvYxqccpBQUjAKBggqhkjOPQQDAzBHMQswCQYD
+VQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZpY2VzIExMQzEUMBIG
+A1UEAxMLR1RTIFJvb3QgUjQwHhcNMTYwNjIyMDAwMDAwWhcNMzYwNjIyMDAwMDAw
+WjBHMQswCQYDVQQGEwJVUzEiMCAGA1UEChMZR29vZ2xlIFRydXN0IFNlcnZp
+Y2VzIExMQzEUMBIGA1UEAxMLR1RTIFJvb3QgUjQwdjAQBgcqhkjOPQIBBgUrgQQA
+IgNiAATzdHOnaItgrkO4NcWBMHtLSZ37wWHO5t5GvWvVYRg1rkDdc/eJkTBa6zzu
+hXyiQHY7qca4R9gq55KRanPpsXI5nymfopjTX15YhmUPoYRlBtHci8nHc8iMai/l
+xKvRHYqjQjBAMA4GA1UdDwEB/wQEAwIBhjAPBgNVHRMBAf8EBTADAQH/MB0GA1Ud
+DgQWBBSATNbrdP9JNqPV2Py1PsVq8JQdjDAKBggqhkjOPQQDAwNpADBmAjEA6ED/
+g94D9J+uHXqnLrmvT/aDHQ4thQEd0dlq7A/Cr8deVl5c1RxYIigL9zC2L7F8AjEA
+8GE8p/SgguMh1YQdc4acLa/KNJvxn7kjNuK8YAOdgLOaVsjh4rsUecrNIdSUtUlD
+-----END CERTIFICATE-----
+)EOF";
 #endif
 Preferences preferences;
 
@@ -154,9 +206,7 @@ bool cloudConfigIsSafe() {
          !isPlaceholder(FIREBASE_DEVICE_EMAIL) &&
          !isPlaceholder(FIREBASE_DEVICE_PASSWORD) &&
          !isPlaceholder(FIREBASE_HOSPITAL_ID) && !isPlaceholder(FIREBASE_PATIENT_ID) &&
-         !isPlaceholder(DEVICE_ID) &&
-         strstr(FIREBASE_CA_CERT, "BEGIN CERTIFICATE") != nullptr &&
-         strstr(FIREBASE_CA_CERT, "replace-with") == nullptr;
+         !isPlaceholder(DEVICE_ID);
 #else
   return String(API_URL).startsWith("https://") && !isPlaceholder(API_URL) &&
          !isPlaceholder(DEVICE_ID) && !isPlaceholder(DEVICE_KEY) &&
@@ -499,7 +549,7 @@ String jsonStringValue(const String &body, const char *name) {
 }
 
 bool firebasePost(const String &url, const String &body, const char *contentType, String &response) {
-  firebaseClient.setCACert(FIREBASE_CA_CERT);
+  firebaseClient.setCACert(FIREBASE_GOOGLE_CA_CERTS);
   HTTPClient request; request.setTimeout(15000);
   if (!request.begin(firebaseClient, url)) return false;
   request.addHeader("Content-Type", contentType);
@@ -586,7 +636,7 @@ bool sendFirebaseTelemetry(bool sos, const String &eventId, uint32_t sequence) {
   while (base.endsWith("/")) base.remove(base.length() - 1);
   const String url = base + "/live_vitals/" + String(FIREBASE_HOSPITAL_ID) + "/" +
                      String(FIREBASE_PATIENT_ID) + ".json?auth=" + urlEncode(firebaseIdToken);
-  firebaseClient.setCACert(FIREBASE_CA_CERT);
+  firebaseClient.setCACert(FIREBASE_GOOGLE_CA_CERTS);
   HTTPClient request; request.setTimeout(15000);
   if (!request.begin(firebaseClient, url)) { statusLine = "Firebase offline"; return false; }
   request.addHeader("Content-Type", "application/json");

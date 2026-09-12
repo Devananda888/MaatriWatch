@@ -34,13 +34,8 @@
 #define FIREBASE_HOSPITAL_ID "00000000-0000-0000-0000-000000000000"
 #define FIREBASE_PATIENT_ID "00000000-0000-0000-0000-000000000000"
 
-// Paste the Google Trust Services root CA used by the Firebase endpoints.
-// Keep TLS validation enabled; never call WiFiClientSecure::setInsecure().
-static const char FIREBASE_CA_CERT[] = R"EOF(
------BEGIN CERTIFICATE-----
-replace-with-google-trust-services-root-ca
------END CERTIFICATE-----
-)EOF";
+// Nothing else is needed here. The firmware contains the public Google root
+// certificates required for Firebase TLS. Do not add a service-account JSON.
 #else
 // Existing deployed MaatriWatch ingestion endpoint and this watch's unique
 // hospital-issued credentials. Never reuse DEVICE_KEY on another watch.

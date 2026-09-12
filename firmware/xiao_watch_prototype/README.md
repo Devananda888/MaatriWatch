@@ -90,8 +90,8 @@ To enable it safely:
    `TELEMETRY_TRANSPORT_FIREBASE` to `1`, then set
    `FIREBASE_WEB_API_KEY`, `FIREBASE_DATABASE_URL`,
    `FIREBASE_DEVICE_EMAIL`, `FIREBASE_DEVICE_PASSWORD`,
-   `FIREBASE_HOSPITAL_ID`, and `FIREBASE_PATIENT_ID`. Paste the Google Trust
-   Services root certificate into `FIREBASE_CA_CERT`.
+   `FIREBASE_HOSPITAL_ID`, and `FIREBASE_PATIENT_ID`. The firmware already
+   contains the public Google root certificates required for Firebase TLS.
 5. Upload by USB or OTA. Serial Monitor should print
    `Firebase device session established`, then `Firebase telemetry 200`.
 
